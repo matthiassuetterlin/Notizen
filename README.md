@@ -9,11 +9,12 @@ gezeigt in drei Linsen, die weich ineinander übergehen. Gedanken und Recherche 
 - **Netz**: wer liefert an wen, wer arbeitet mit wem, wer unterstützt wen.
 - **Verbinden** (in jeder Linse): Fährt man über eine Rolle, poppen am Rand vier Andockpunkte auf. Aus einem zieht man live ein Kabel zu einer anderen Rolle; beim Loslassen entsteht die Verbindung und ein kleines Menü fragt nach der Art (liefert an, arbeitet mit, unterstützt), Richtung umkehren oder löschen. Ein Klick auf eine Linie öffnet dasselbe Menü.
 - **„Wer ist zuständig für …?“** oben sucht in Rollen, Aufgaben und Namen und zeigt Bereich › Rolle › Person.
+- **Fähnchen** halten offene Punkte fest, die noch geklärt werden müssen: Rolle, Person oder Bereich anklicken, im Panel „Fähnchen setzen“ und Notiz tippen. Das Fähnchen steckt dann am Rand der Bubble (Maus drüber zeigt den Text), der Kreis davor hakt es als geklärt ab. Der Knopf „Fähnchen“ oben listet alle offenen und geklärten.
 - **Lücken** zeigt Rollen ohne Person, doppelt verantwortete Aufgaben und Menschen mit vielen Rollen.
 - **Doppelklick** legt an, **Klick** öffnet rechts die Karte zum Bearbeiten, **Entf** löscht, **Strg/Cmd+Z** macht rückgängig, **1 2 3** wechselt die Linse, **/** sucht.
 - **Mausrad** zoomt überall, auch über den Bubbles; Ziehen auf der freien Fläche oder die **mittlere Maustaste** verschiebt die Ansicht. Unten links: Rückgängig, Wiederholen und Zoom (Klick auf die Prozentzahl zeigt alles).
 - **Gespeichert** (ganz oben im Menü ☰): „+ Aktuelle Einstellungen speichern“ legt 01, 02, 03 … an; beim Löschen rücken die folgenden nach. Der Haken markiert den Default, der Knopf „Default“ lädt ihn. Werkseinstellung und 01: Hell, Pastell, Farbverlauf 15, Farbstärke 115 %, Verschmelzen 10, Abstand 40, Plastisch 45 %, Kontur 1.0, Playfair, Punkte an.
-- **Menü ☰ oben rechts**: hell, dunkel oder wie System; Farbset (Frisch, Pastell, Abend, Mono), Farbverlauf, Farbstärke, Deckkraft, Verschmelzen, Abstand der Rollen, Plastisch, Kontur, Schrift, Punkte im Hintergrund. Dazu Datei sichern und laden.
+- **Menü ☰ oben rechts**: hell, dunkel oder wie System; Farbset (Frisch, Pastell, Abend, Mono), Farbverlauf, Farbstärke, Deckkraft, Verschmelzen, Abstand der Rollen, Plastisch, Kontur, Schrift, „Schrift in der Bubble halten“ (verkleinert und bricht lange Namen um, Rollen mit langem Namen wachsen etwas mit; 0 % schaltet das ab), Punkte im Hintergrund. Dazu Datei sichern und laden.
 
 Alles wird automatisch im Browser gespeichert (localStorage, pro Gerät und Browser).
 
