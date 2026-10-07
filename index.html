@@ -136,6 +136,20 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
   border-radius: 16px; padding: 10px; display: none;
 }
 .pop.open { display: block; }
+/* Einstellungsmenü: bleibt offen, an der linken Kante breiter ziehbar, Inhalt zoombar */
+#menuPop { padding: 0; overflow: hidden; flex-direction: column; max-height: calc(100vh - 76px); }
+#menuPop.open { display: flex; }
+#menuBody { overflow: auto; padding: 4px 10px 10px; min-height: 0; flex: 1; }
+#menuPop .mhead { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 10px 8px 18px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; font-family: var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim); }
+#menuPop .mhead > span:first-child { flex: 1; }
+#menuPop .mz { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+#menuPop .mz button, #menuPop .mx { border: 0; background: none; height: 26px; min-width: 26px; padding: 0 6px; font-family: var(--text); font-size: 14px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+#menuPop .mz #mzPct { font-family: var(--mono); font-size: 11px; min-width: 44px; color: var(--ink-dim); }
+#menuPop .mz button:hover, #menuPop .mx:hover { background: var(--hover); }
+#menuPop .mx { border-radius: 8px; font-size: 18px; color: var(--ink-dim); }
+#menuPop .mgrip { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 3; border-radius: 16px 0 0 16px; }
+#menuPop .mgrip:hover, #menuPop.resizing .mgrip { background: linear-gradient(90deg, var(--accent-soft), transparent); }
+#menuPop.resizing { user-select: none; }
 .pop h4 { margin: 8px 8px 4px; font-size: 11px; font-family: var(--mono); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); }
 .pop button.item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 8px; }
 .pop button.item:hover { background: var(--hover); }
@@ -353,6 +367,9 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
   <button class="item" data-add="person">Neue Person</button>
 </div>
 <div id="menuPop" class="pop pill">
+  <div class="mgrip" title="Breiter oder schmaler ziehen" aria-hidden="true"></div>
+  <div class="mhead"><span>Einstellungen</span><span class="mz"><button data-mz="-1" title="Menü verkleinern" aria-label="Menü verkleinern">−</button><button data-mz="0" id="mzPct" title="Menügröße zurücksetzen">100%</button><button data-mz="1" title="Menü vergrößern" aria-label="Menü vergrößern">+</button></span><button class="mx" data-mclose title="Menü schließen" aria-label="Menü schließen">×</button></div>
+  <div id="menuBody">
   <div id="settings"></div>
   <hr />
   <button class="item" data-m="fit">Alles zeigen</button>
@@ -364,6 +381,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
   <h4>Bedienung</h4>
   <div class="ok">Doppelklick legt an: auf einen Bereich eine Rolle, auf eine Person eine Rolle für sie, auf die freie Fläche einen Bereich bzw. eine Person. Ziehen ordnet zu, Shift beim Loslassen teilt statt verschiebt. Bereiche (an der Fläche oder am Titel) und Personen lassen sich frei anordnen; die Anordnung bleibt gespeichert. Aus den Punkten am Rand einer Rolle ziehst du Verbindungen. Offene Punkte hältst du als Fähnchen fest: Element anklicken, im Panel „Fähnchen setzen“. Entf löscht, Strg/Cmd+Z macht rückgängig, 1 2 3 wechselt die Linse, / sucht.</div>
   <input id="file" type="file" accept="application/json,.json" hidden />
+  </div>
 </div>
 
 <aside id="panel" class="panel pill" aria-live="polite"></aside>
@@ -1719,7 +1737,7 @@ resEl.addEventListener("click", (e) => { const b = e.target.closest(".res"); if 
 document.addEventListener("pointerdown", (e) => {
   if (!e.target.closest(".search")) resEl.classList.remove("open");
   if (linkPopId && !e.target.closest("#linkPop") && !e.target.closest("[data-link]")) closeLinkPop();
-  for (const [btn, pop] of [["#flagsBtn", "#flagsPop"], ["#gapsBtn", "#gapsPop"], ["#addBtn", "#addPop"], ["#menuBtn", "#menuPop"]])
+  for (const [btn, pop] of [["#flagsBtn", "#flagsPop"], ["#gapsBtn", "#gapsPop"], ["#addBtn", "#addPop"]])
     if (!e.target.closest(btn) && !e.target.closest(pop)) $(pop).classList.remove("open");
 });
 
@@ -1778,6 +1796,35 @@ $("#addPop").addEventListener("click", (e) => {
   ({ area: () => addArea(), role: () => addRole(), person: () => addPerson() })[b.dataset.add]();
 });
 $("#menuBtn").addEventListener("click", () => $("#menuPop").classList.toggle("open"));
+// Menü: Breite und Zoom merken
+const menuPop = $("#menuPop"), menuBody = $("#menuBody");
+let menuW = +readLS("notizen.menuW") || 300, menuZ = +readLS("notizen.menuZ") || 1;
+function applyMenu() {
+  menuW = Math.max(260, Math.min(innerWidth * 0.8, menuW)); menuZ = Math.max(0.7, Math.min(1.8, Math.round(menuZ * 100) / 100));
+  if (innerWidth >= 760) menuPop.style.width = menuW + "px"; else menuPop.style.width = "";
+  menuBody.style.zoom = menuZ; $("#mzPct").textContent = Math.round(menuZ * 100) + "%";
+  writeLS("notizen.menuW", menuW); writeLS("notizen.menuZ", menuZ);
+}
+menuPop.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-mz],[data-mclose]"); if (!b) return;
+  if (b.dataset.mclose !== undefined) return menuPop.classList.remove("open");
+  const d = +b.dataset.mz; menuZ = d ? menuZ + d * 0.1 : 1; applyMenu();
+});
+// Strg/Cmd + Mausrad zoomt den Menü-Inhalt, das normale Mausrad scrollt
+menuPop.addEventListener("wheel", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault(); menuZ *= Math.exp(-e.deltaY * 0.002); applyMenu();
+}, { passive: false });
+menuPop.querySelector(".mgrip").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const x0 = e.clientX, w0 = menuPop.getBoundingClientRect().width;
+  menuPop.classList.add("resizing");
+  const mv = (ev) => { menuW = w0 + (x0 - ev.clientX); applyMenu(); };
+  const up = () => { menuPop.classList.remove("resizing"); removeEventListener("pointermove", mv); removeEventListener("pointerup", up); };
+  addEventListener("pointermove", mv); addEventListener("pointerup", up);
+});
+addEventListener("resize", applyMenu);
+applyMenu();
 $("#menuPop").addEventListener("click", (e) => {
   const b = e.target.closest("[data-m]"); if (!b) return;
   const m = b.dataset.m;
@@ -1788,7 +1835,6 @@ $("#menuPop").addEventListener("click", (e) => {
     return;
   }
   if (b.dataset.armed) { b.textContent = b.dataset.armed; delete b.dataset.armed; }
-  $("#menuPop").classList.remove("open");
   if (m === "fit") fit();
   if (m === "arrange") { change(() => { if (S.pos) delete S.pos[lens]; }); if (seeds[lens]) seeds[lens].clear(); layoutVersion++; relayout({ fit: true }); }
   if (m === "export") {
