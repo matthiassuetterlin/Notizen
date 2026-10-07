@@ -1032,8 +1032,9 @@ function renderFlags() {
       flagEls.set(key, e);
     }
     // Einstich innen im oberen rechten Teil der Bubble (bei Personen-Punkten mittig)
-    const chip = t === "person" && lens !== "menschen", a = chip ? 0 : t === "area" && lens === "kreise" ? 0.62 : 0.42;
-    const px = v.x + v.r * a, py = chip ? v.y : v.y - v.r * a * 0.9;
+    // oberhalb der Schrift, aber mit Luft zur Außenkontur: auf 70 % des Radius schräg nach oben rechts
+    const chip = t === "person" && lens !== "menschen", d = chip ? 0 : t === "area" && lens === "kreise" ? 0.82 : 0.7, ang = -Math.PI * (t === "area" ? 0.25 : 0.34);
+    const px = v.x + v.r * d * Math.cos(ang), py = chip ? v.y : v.y + v.r * d * Math.sin(ang);
     e.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)}) scale(${sc.toFixed(3)})`);
     e._n.textContent = open.length > 1 ? open.length : "";
     const txt = open[0].text.trim() || "Offener Punkt";
