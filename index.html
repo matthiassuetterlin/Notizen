@@ -151,6 +151,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .seg .sws { display: inline-flex; }
 .seg .sws i { width: 9px; height: 9px; border-radius: 50%; margin-left: -2px; border: 1px solid var(--line); }
 .sw-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: 13px; }
+.cpick { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: none; cursor: pointer; }
+.cpick::-webkit-color-swatch-wrapper { padding: 2px; } .cpick::-webkit-color-swatch { border: 0; border-radius: 5px; }
 .switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; margin: 0; }
 .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--d0); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
 .switch:checked { background: var(--accent); }
@@ -381,7 +383,7 @@ const SETS = {
   mono: { name: "Mono", c: ["#d6d3cd", "#c2beb7", "#aeaaa3", "#e4e1db", "#ccc7bf", "#b9b4ac", "#a39e96", "#dcd8d1"] },
 };
 // Werkseinstellung = Matthias' Aussehen vom 07.10.2026; zugleich der erste Speicherplatz 01
-const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, gap: 40, font: "display", dots: true, fit: 1 };
+const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
 const DEFAULT_THEME = "light";
 // Gespeicherte Einstellungen: Nummern ergeben sich aus der Reihenfolge, def = Index des Default-Eintrags
 let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME }], def: 0 };
@@ -555,8 +557,10 @@ function buildFilter() {
   }
   if (T.outline) {
     el("feMorphology", { id: "erode", in: "shape", operator: "erode", radius: 1, result: "e" });
-    el("feComposite", { in: "shape", in2: "e", operator: "out", result: "ring0" });
-    el("feFlood", { "flood-color": TC.outline, result: "oc" });
+    el("feComposite", { in: "shape", in2: "e", operator: "out", result: "ringA" });
+    // Konturschärfe: 100 % gestochen scharf, darunter zunehmend weich
+    el("feGaussianBlur", { id: "ringBlur", in: "ringA", stdDeviation: 0, result: "ring0" });
+    el("feFlood", { "flood-color": outlineColor(), result: "oc" });
     el("feComposite", { in: "oc", in2: "ring0", operator: "in", result: "ring" });
     layers.push("ring");
   }
@@ -564,10 +568,12 @@ function buildFilter() {
   for (const l of layers) el("feMergeNode", { in: l }, m);
   setErode();
 }
+function outlineColor() { return /^#[0-9a-f]{6}$/i.test(T.lineColor) ? T.lineColor : TC.dark ? "#ffffff" : "#000000"; }
 function setErode() {
   const e = $("#erode"); if (!e) return;
   const k = typeof d3 !== "undefined" && $("#stage") ? d3.zoomTransform($("#stage")).k : 1;
   e.setAttribute("radius", Math.max(0.3, T.line / k).toFixed(2));
+  const b = $("#ringBlur"); if (b) b.setAttribute("stdDeviation", ((1 - (T.edge ?? 1)) * (1 + T.line) * 1.6 / k).toFixed(2));
 }
 function hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
 function lum([r, g, b]) { return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
@@ -1789,6 +1795,7 @@ const SLIDERS = [
     ["gap", "Abstand der Rollen in Bereichen", 0, 70, 1, (v) => v],
     ["shade", "Plastisch", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
     ["line", "Konturstärke", 0.3, 3, 0.1, (v) => v.toFixed(1)],
+    ["edge", "Konturschärfe", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
   ]],
   ["Schrift der Bubbles", [
     ["fit", "Schrift in der Bubble halten", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
@@ -1808,9 +1815,13 @@ function renderSettings() {
     h += `<h4>${group}</h4>`;
     if (group === "Schrift der Bubbles") h += seg("font", [["text", "Manrope"], ["display", "Playfair"], ["mono", "DM Mono"]], T.font);
     for (const [k, label, min, max, step, fmt] of list) {
-      const dis = k === "line" && !T.outline ? "disabled" : "";
+      const dis = (k === "line" || k === "edge") && !T.outline ? "disabled" : "";
       h += `<label class="set"><span>${label}</span><output id="o-${k}">${fmt(T[k])}</output><input id="s-${k}" type="range" min="${min}" max="${max}" step="${step}" value="${T[k]}" data-set-k="${k}" ${dis} /></label>`;
-      if (k === "shade") h += `<div class="sw-row"><span>Kontur</span><input id="s-outline" class="switch" type="checkbox" data-set-b="outline" ${T.outline ? "checked" : ""} /></div>`;
+      if (k === "shade") {
+        const custom = /^#[0-9a-f]{6}$/i.test(T.lineColor);
+        h += `<div class="sw-row"><span>Kontur</span><input id="s-outline" class="switch" type="checkbox" data-set-b="outline" ${T.outline ? "checked" : ""} /></div>`;
+        h += `<div class="sw-row"><span>Konturfarbe</span><span class="seg" style="align-items:center"><button data-line-auto aria-pressed="${!custom}" title="Hell: schwarz, Dunkel: weiß">Automatisch</button><input type="color" class="cpick" data-set-c="lineColor" value="${outlineColor()}" aria-label="Konturfarbe frei wählen" title="Farbe frei wählen" ${T.outline ? "" : "disabled"} /></span></div>`;
+      }
     }
   }
   h += `<div class="sw-row"><span>Punkte im Hintergrund</span><input id="s-dots" class="switch" type="checkbox" data-set-b="dots" ${T.dots ? "checked" : ""} /></div>`;
@@ -1836,12 +1847,18 @@ $("#settings").addEventListener("input", (e) => {
     if (k === "gap" || k === "fit") { clearTimeout(gapT); gapT = setTimeout(() => { if (k === "fit") layoutVersion++; relayout({ dur: 400 }); }, 60); }
     else render();
   }
+  if (e.target.dataset.setC) {
+    T.lineColor = e.target.value; applyLook(); render();
+    const a = $("[data-line-auto]"); if (a) a.setAttribute("aria-pressed", "false");
+    return;
+  }
   const b = e.target.dataset.setB;
   if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); render(); }
 });
 $("#settings").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.theme) return setTheme(b.dataset.theme);
+  if (b.dataset.lineAuto !== undefined) { T.lineColor = "auto"; applyLook(); render(); renderSettings(); return; }
   if (b.dataset.set) { T.set = b.dataset.set; applyLook(); paint(); render(); renderSettings(); renderPanel(); return; }
   if (b.dataset.font) { T.font = b.dataset.font; applyLook(false); layoutVersion++; relayout({ dur: 400 }); renderSettings(); return; }
   const savePresets = () => writeLS("notizen.presets", JSON.stringify(PRESETS));
