@@ -12,6 +12,7 @@ gezeigt in drei Linsen, die weich ineinander übergehen. Gedanken und Recherche 
 - **Lücken** zeigt Rollen ohne Person, doppelt verantwortete Aufgaben und Menschen mit vielen Rollen.
 - **Doppelklick** legt an, **Klick** öffnet rechts die Karte zum Bearbeiten, **Entf** löscht, **Strg/Cmd+Z** macht rückgängig, **1 2 3** wechselt die Linse, **/** sucht.
 - **Mausrad** zoomt überall, auch über den Bubbles; Ziehen auf der freien Fläche oder die **mittlere Maustaste** verschiebt die Ansicht. Unten links: Rückgängig, Wiederholen und Zoom (Klick auf die Prozentzahl zeigt alles).
+- **Gespeichert** (ganz oben im Menü ☰): „+ Aktuelle Einstellungen speichern“ legt 01, 02, 03 … an; beim Löschen rücken die folgenden nach. Der Haken markiert den Default, der Knopf „Default“ lädt ihn. Werkseinstellung und 01: Hell, Pastell, Farbverlauf 15, Farbstärke 115 %, Verschmelzen 10, Abstand 40, Plastisch 45 %, Kontur 1.0, Playfair, Punkte an.
 - **Menü ☰ oben rechts**: hell, dunkel oder wie System; Farbset (Frisch, Pastell, Abend, Mono), Farbverlauf, Farbstärke, Deckkraft, Verschmelzen, Abstand der Rollen, Plastisch, Kontur, Schrift, Punkte im Hintergrund. Dazu Datei sichern und laden.
 
 Alles wird automatisch im Browser gespeichert (localStorage, pro Gerät und Browser).
