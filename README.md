@@ -55,3 +55,7 @@ python3 -m http.server 8000
 
 Jeder Push auf `main` veröffentlicht die Seite über GitHub Pages
 (Workflow `.github/workflows/pages.yml`, Quelle in den Pages-Einstellungen: „GitHub Actions“).
+
+## Daten mit Code freigeben
+
+Die Daten (Bereiche, Rollen, Menschen, Verbindungen) liegen im Browser. Damit andere sie sehen, ohne dass sie offen im Netz stehen: ☰ → „Für alle verschlüsseln …“, Zifferncode zweimal eingeben (empfohlen 8+ Ziffern), den erzeugten Text an Claude schicken. Er wird als `VAULT` in `index.html` eingebaut (PBKDF2-SHA-256 mit 600 000 Runden, AES-GCM 256). Besucher sehen beim Öffnen einen Ziffernblock; der richtige Code lädt die Daten, „Abbrechen“ zeigt die Beispieldaten. Vorhandene eigene Daten im Browser werden vorher unter `notizen.backup` gesichert. Über ☰ → „Freigegebene Daten laden (Code) …“ lässt sich der Ziffernblock jederzeit wieder öffnen.
