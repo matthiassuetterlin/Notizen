@@ -434,6 +434,7 @@ const SETS = {
   pastell: { name: "Pastell", c: PALETTE },
   abend: { name: "Abend", c: ["#e76f51", "#457b9d", "#7b5ea7", "#2a9d8f", "#e9c46a", "#d1495b", "#4ea8de", "#f4a261"] },
   mono: { name: "Mono", c: ["#d6d3cd", "#c2beb7", "#aeaaa3", "#e4e1db", "#ccc7bf", "#b9b4ac", "#a39e96", "#dcd8d1"] },
+  ci: { name: "CI", c: ["#FEE7C0", "#641DFF", "#7B5CFF", "#C0FEC8", "#ECFEC0", "#FEC0E1", "#C0FEFB", "#CECCFF"] },
 };
 // Werkseinstellung = Matthias' Aussehen vom 07.10.2026; zugleich der erste Speicherplatz 01
 const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
@@ -1112,7 +1113,11 @@ function paintOne(k, e) {
   else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))); }
   else if (t === "p") e.setAttribute("fill", D(TC.pbub));
   else if (t === "la") { const a = area(id); if (a && e.textContent !== a.name) e.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
-  else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+  else if (t === "lr") {
+    e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+    // auf kräftigen Farben (z. B. Electric Indigo im CI-Set) helle Schrift
+    const r = role(id); e.style.fill = r && area(r.area) && lum(hex(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))) < 0.56 ? "#ffffff" : "";
+  }
   else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
   else if (t === "c") {
     const p = person(id2), heavy = gapsOn && p && rolesOf(p.id).length >= HEAVY;
