@@ -538,18 +538,27 @@ function buildFilter() {
   el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: T.goo, result: "ab" });
   el("feColorMatrix", { in: "ab", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 26 -11", result: "shape" });
   el("feComposite", { in: "cb", in2: "shape", operator: "in", result: "body0" });
-  const ct = el("feComponentTransfer", { in: "body0", result: "body" });
+  const ct = el("feComponentTransfer", { in: "body0", result: T.shade > 0 ? "flat" : "body" });
   el("feFuncA", { type: "linear", slope: T.opacity.toFixed(2) }, ct);
   const layers = [];
   if (T.shade > 0) {
-    el("feGaussianBlur", { in: "shape", stdDeviation: 5 + 9 * T.shade, result: "sh0" });
-    el("feOffset", { in: "sh0", dy: 3 + 7 * T.shade, result: "sh1" });
+    // Plastisch: weiche Schattierung zur lichtabgewandten Seite, damit auch helle und weiße Flächen Tiefe bekommen
+    el("feGaussianBlur", { id: "fxLit", in: "shape", stdDeviation: 12, result: "lb" });
+    const dl = el("feDiffuseLighting", { in: "lb", surfaceScale: 6, diffuseConstant: 1, "lighting-color": "#ffffff", result: "lit0" });
+    el("feDistantLight", { azimuth: 235, elevation: 60 }, dl);
+    const k = 0.55 * T.shade, sinEl = Math.sin(Math.PI / 3);
+    const lt = el("feComponentTransfer", { in: "lit0", result: "lit" });
+    for (const c of ["R", "G", "B"]) el("feFunc" + c, { type: "linear", slope: (k / sinEl).toFixed(3), intercept: (1 - k).toFixed(3) }, lt);
+    el("feBlend", { in: "flat", in2: "lit", mode: "multiply", result: "body1" });
+    el("feComposite", { in: "body1", in2: "flat", operator: "in", result: "body" });
+    el("feGaussianBlur", { id: "fxSh", in: "shape", stdDeviation: 5 + 9 * T.shade, result: "sh0" });
+    el("feOffset", { id: "fxOff", in: "sh0", dy: 3 + 7 * T.shade, result: "sh1" });
     el("feColorMatrix", { in: "sh1", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${(0.12 + 0.16 * T.shade).toFixed(3)} 0`, result: "shadow" });
     layers.push("shadow");
   }
   layers.push("body");
   if (T.shade > 0) {
-    el("feGaussianBlur", { in: "shape", stdDeviation: 9, result: "hb" });
+    el("feGaussianBlur", { id: "fxHi", in: "shape", stdDeviation: 9, result: "hb" });
     const sl = el("feSpecularLighting", { in: "hb", surfaceScale: 5, specularConstant: ((TC.dark ? 0.35 : 0.75) * T.shade).toFixed(2), specularExponent: 22, "lighting-color": "#ffffff", result: "spec0" });
     el("feDistantLight", { azimuth: 235, elevation: 50 }, sl);
     el("feComposite", { in: "spec0", in2: "shape", operator: "in", result: "spec" });
@@ -573,6 +582,10 @@ function setErode() {
   const e = $("#erode"); if (!e) return;
   const k = typeof d3 !== "undefined" && $("#stage") ? d3.zoomTransform($("#stage")).k : 1;
   e.setAttribute("radius", Math.max(0.3, T.line / k).toFixed(2));
+  // Plastisch in Bildschirm-Pixeln, damit es in jeder Ansicht und Zoomstufe gleich wirkt
+  const set = (id, a, v) => { const n = $(id); if (n) n.setAttribute(a, (v / k).toFixed(2)); };
+  set("#fxLit", "stdDeviation", 7); set("#fxHi", "stdDeviation", 5.5);
+  set("#fxSh", "stdDeviation", 3 + 6 * T.shade); set("#fxOff", "dy", 2 + 5 * T.shade);
   const b = $("#ringBlur"); if (b) b.setAttribute("stdDeviation", ((1 - (T.edge ?? 1)) * (1 + T.line) * 1.6 / k).toFixed(2));
 }
 function hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
