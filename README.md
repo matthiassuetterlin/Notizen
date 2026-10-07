@@ -11,7 +11,7 @@ wie Tropfen ineinanderfließen).
 - Auf dem Tablet ersetzen „Einordnen“ und „Herauslösen“ in der Leiste die Tasten.
 - **Mittlere Maustaste** oder Ziehen auf der freien Fläche verschiebt die Ansicht, Mausrad oder zwei Finger zoomen. „Übersicht“ zeigt alles.
 - **„Struktur“ oben links** zeigt die Hierarchie als Baum und listet alle Verbindungen. Klick wählt aus und holt die Bubble ins Bild, Doppelklick schreibt.
-- **Menü oben rechts**: Anziehung, Abstoßung, Gleiten, Verschmelzen, Tropfenform, Farbverlauf, Kontur, Größen, Schriftgröße und Schriftart (Helvetica, Playfair, Plex Mono) einstellen.
+- **Menü oben rechts**: Anziehung, Abstoßung, Gleiten, Verschmelzen, Tropfenform, Farbverlauf, Kontur, Größen, Schriftgröße und Schriftart (Helvetica, Playfair, Plex Mono) einstellen. Unter „Gespeichert“ lassen sich Einstellungen als 01, 02, … sichern, per Klick laden, löschen und eine davon als „Standard“ markieren; sie gilt dann beim Öffnen und für „Standard wiederherstellen“.
 - Strg/Cmd+Z macht rückgängig, Strg/Cmd+Shift+Z oder Strg+Y wiederholt (auch als Buttons in der Leiste).
 
 Alles wird automatisch im Browser gespeichert (localStorage, pro Gerät und Browser).

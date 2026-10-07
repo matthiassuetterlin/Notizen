@@ -287,6 +287,39 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 .tune-row input[type="color"] { width: 44px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .tune-val { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
 .tune-note { margin: 0.2rem 0 0; color: var(--ink-dim); line-height: 1.45; }
+.preset {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0;
+}
+.preset-name {
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.preset-name:hover { background: var(--line); }
+.preset.is-current .preset-name { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.preset-def {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.preset-def[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.preset-del { width: 28px; height: 28px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); }
+.preset-del:hover { color: var(--ink); }
+.tune-add {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  text-align: center;
+  border: 1px dashed var(--ink-dim);
+  border-radius: 8px;
+}
 .tune-actions { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
 .tune-actions button {
   flex: 1;
@@ -391,6 +424,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 <aside id="panel" aria-label="Einstellungen" hidden>
   <h2>Einstellungen</h2>
   <p class="tune-note">Wirken sofort und werden in diesem Browser gespeichert.</p>
+  <h3>Gespeichert</h3>
+  <div id="presets"></div>
+  <button type="button" id="preset-add" class="tune-add">Aktuelle Einstellungen speichern</button>
+  <p class="tune-note">Klick auf einen Namen lädt ihn. „Standard“ gilt beim Öffnen und für „Standard wiederherstellen“.</p>
   <div id="tune"></div>
   <div class="tune-actions">
     <button type="button" id="tune-reset">Standard wiederherstellen</button>
@@ -501,13 +538,29 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     ["font", "Schriftgröße", 0.7, 1.8, 0.05],
   ];
   const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
-  const T = { ...DEFAULTS };
+  // Saved settings: { list: [{ name: "01", values }], def: "01" | null }
+  const PRESET_STORE = "notizen-presets-v1";
+  let presets = { list: [], def: null };
   try {
-    Object.assign(T, JSON.parse(localStorage.getItem(TUNE_STORE) || "{}"));
+    const p = JSON.parse(localStorage.getItem(PRESET_STORE) || "null");
+    if (p && Array.isArray(p.list)) presets = { list: p.list.filter((x) => x && x.name && x.values), def: p.def || null };
   } catch (e) {
-    /* defaults */
+    /* none saved */
   }
-  for (const k of Object.keys(T)) if (!(k in DEFAULTS)) delete T[k];
+  const clean = (v) => {
+    const out = {};
+    for (const k in DEFAULTS) out[k] = v && k in v && typeof v[k] === typeof DEFAULTS[k] ? v[k] : DEFAULTS[k];
+    return out;
+  };
+  // The base: the saved settings marked "Standard", else the built-in values
+  const base = () => clean(presets.list.find((x) => x.name === presets.def)?.values);
+  const T = base();
+  try {
+    const cur = JSON.parse(localStorage.getItem(TUNE_STORE) || "null");
+    if (cur) Object.assign(T, clean(cur));
+  } catch (e) {
+    /* base */
+  }
 
   // Per nesting depth (0 = main bubble)
   const SIG_K = [1, 0.67, 0.55, 0.45]; // goo of the hairline, × T.goo
@@ -1801,6 +1854,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     for (const b of bubbles.values()) b.vx += 1e-6;
     dirty = true;
     saveTune();
+    if (!panel.hidden) renderPresets();
   }
   function buildPanel() {
     tuneEl.textContent = "";
@@ -1887,6 +1941,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     syncPanel();
   }
   function syncPanel() {
+    renderPresets();
     for (const key in inputs) {
       const inp = inputs[key];
       if (inp._choice) {
@@ -1911,11 +1966,74 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (open) syncPanel();
   }
   menuBtn.addEventListener("click", () => toggleMenu(panel.hidden));
-  $("tune-reset").addEventListener("click", () => {
-    Object.assign(T, DEFAULTS);
+  function setAll(values) {
+    Object.assign(T, clean(values));
     mcache.clear();
     applyTune();
     syncPanel();
+  }
+  $("tune-reset").addEventListener("click", () => setAll(base()));
+
+  // --- Saved settings -------------------------------------------------------------
+  const presetsEl = $("presets");
+  function savePresets() {
+    try {
+      localStorage.setItem(PRESET_STORE, JSON.stringify(presets));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
+  function renderPresets() {
+    presetsEl.textContent = "";
+    if (!presets.list.length) {
+      const p = document.createElement("p");
+      p.className = "tune-note";
+      p.textContent = "Noch nichts gespeichert.";
+      presetsEl.appendChild(p);
+    }
+    for (const pr of presets.list) {
+      const row = document.createElement("div");
+      row.className = "preset" + (same(T, clean(pr.values)) ? " is-current" : "");
+      const nm = document.createElement("button");
+      nm.type = "button";
+      nm.className = "preset-name";
+      nm.textContent = pr.name;
+      nm.title = `Einstellungen ${pr.name} laden`;
+      nm.addEventListener("click", () => setAll(pr.values));
+      const def = document.createElement("button");
+      def.type = "button";
+      def.className = "preset-def";
+      def.textContent = "Standard";
+      def.setAttribute("aria-pressed", String(presets.def === pr.name));
+      def.title = presets.def === pr.name ? "Nicht mehr als Standard verwenden" : "Als Standard verwenden";
+      def.addEventListener("click", () => {
+        presets.def = presets.def === pr.name ? null : pr.name;
+        savePresets();
+        renderPresets();
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "preset-del";
+      del.textContent = "×";
+      del.setAttribute("aria-label", `${pr.name} löschen`);
+      del.addEventListener("click", () => {
+        presets.list = presets.list.filter((x) => x !== pr);
+        if (presets.def === pr.name) presets.def = null;
+        savePresets();
+        renderPresets();
+      });
+      row.append(nm, def, del);
+      presetsEl.appendChild(row);
+    }
+  }
+  $("preset-add").addEventListener("click", () => {
+    const n = presets.list.reduce((m, x) => Math.max(m, parseInt(x.name, 10) || 0), 0) + 1;
+    const name = String(n).padStart(2, "0");
+    presets.list.push({ name, values: { ...T } });
+    savePresets();
+    renderPresets();
+    flash(`Einstellungen als ${name} gespeichert`);
   });
 
   // --- Theme ----------------------------------------------------------------------
