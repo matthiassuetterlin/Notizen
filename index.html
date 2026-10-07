@@ -566,7 +566,7 @@ function readTheme() {
   TC = { d0: g("--d0"), pfill: g("--pfill"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn"), accent: g("--accent") };
   TC.dark = lum(hex(TC.d0)) < 0.4;
   // Personen in „Menschen“: hell im Grau der Hintergrundpunkte, dunkel weiß (bessere Lesbarkeit)
-  TC.pbub = TC.dark ? TC.pfill : g("--dot");
+  TC.pbub = TC.dark ? TC.pfill : mix(g("--dot"), "#ffffff", 0.5);
   buildFilter();
   $("#arrow path").setAttribute("stroke", TC.dim);
   $("#arrowHot path").setAttribute("stroke", TC.accent);
