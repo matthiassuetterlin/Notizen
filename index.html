@@ -432,6 +432,13 @@ const DEFAULT_THEME = "light";
 let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME }], def: 0 };
 try { const p = JSON.parse(localStorage.getItem("notizen.presets")); if (p && Array.isArray(p.list)) PRESETS = p; } catch (e) {}
 const defaultPreset = () => PRESETS.list[PRESETS.def] || { look: { ...DEFAULTS }, theme: DEFAULT_THEME };
+// das kurz eingeführte Farbset „VAVE“ wurde zurückgenommen: dort gespeicherte Einstellungen wieder auf Pastell
+for (const p of PRESETS.list) if (p.look && p.look.set === "vave") p.look.set = "pastell";
+try {
+  const l = JSON.parse(localStorage.getItem("notizen.look"));
+  if (l && l.set === "vave") { l.set = "pastell"; localStorage.setItem("notizen.look", JSON.stringify(l)); }
+  if (localStorage.getItem("notizen.vave")) { localStorage.setItem("notizen.presets", JSON.stringify(PRESETS)); localStorage.removeItem("notizen.vave"); }
+} catch (e) {}
 let T = { ...DEFAULTS };
 let savedLook = null;
 try { savedLook = JSON.parse(localStorage.getItem("notizen.look")); } catch (e) {}
