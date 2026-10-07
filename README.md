@@ -1,5 +1,11 @@
 # Notizen
 
+> **Neu auf diesem Branch: [`gefuege.html`](gefuege.html)**, ein grundlegend neu gedachtes Werkzeug
+> für Zuständigkeiten in einer Firma: Bereiche, Rollen und Menschen in drei Linsen (Bereiche,
+> Menschen, Netz), eine Suche „Wer ist zuständig für …?“ und ein Lücken-Radar.
+> Gedanken und Recherche dazu stehen in [`KONZEPT.md`](KONZEPT.md). Die bisherigen
+> Bubble-Notizen (`index.html`) bleiben unverändert.
+
 Notizen als Bubbles auf einem freien Brett, im Look der Website: Bubbles, die man
 aneinanderschiebt, verschmelzen wie Tropfen und bleiben so angedockt; jede behält ihre Farbe.
 

@@ -1,0 +1,1273 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Gefüge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root {
+  --bg: #ffffff;
+  --ink: rgba(44, 40, 36, 0.86);
+  --ink-dim: rgba(44, 40, 36, 0.52);
+  --mark: #111111;
+  --outline: #595959;
+  --d0: #ffffff;
+  --d1: #f7f6f3;
+  --dot: #e6e3de;
+  --panel: rgba(255, 255, 255, 0.95);
+  --line: rgba(0, 0, 0, 0.13);
+  --warn: #d98a12;
+  --display: "Playfair Display", "Times New Roman", Times, serif;
+  --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514; --ink: rgba(238, 233, 226, 0.88); --ink-dim: rgba(238, 233, 226, 0.52);
+    --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
+    --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514; --ink: rgba(238, 233, 226, 0.88); --ink-dim: rgba(238, 233, 226, 0.52);
+  --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
+  --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+#stage [data-k] { cursor: pointer; }
+#stage.dragging, #stage.dragging [data-k] { cursor: grabbing; }
+
+/* ---------- top bar ---------- */
+.top {
+  position: fixed; top: 14px; left: 16px; right: 16px; z-index: 5;
+  display: flex; align-items: flex-start; gap: 12px; pointer-events: none;
+}
+.top > * { pointer-events: auto; }
+.brand { font-family: var(--display); font-size: 24px; line-height: 38px; letter-spacing: 0.01em; margin-right: 4px; white-space: nowrap; }
+.pill {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.lenses { display: flex; padding: 3px; gap: 2px; height: 38px; }
+.lenses button {
+  border: 0; background: none; border-radius: 999px; padding: 0 14px; height: 30px;
+  font-weight: 600; font-size: 13px; color: var(--ink-dim);
+}
+.lenses button[aria-pressed="true"] { background: var(--mark); color: var(--bg); }
+.search { position: relative; flex: 1 1 auto; max-width: 460px; margin: 0 auto; }
+.search input {
+  width: 100%; height: 38px; padding: 0 16px 0 38px; outline: none;
+}
+.search input:focus { border-color: var(--ink-dim); }
+.search > svg { position: absolute; left: 14px; top: 12px; opacity: 0.55; z-index: 1; pointer-events: none; }
+.results {
+  position: absolute; top: 44px; left: 0; right: 0; border-radius: 16px; padding: 6px;
+  display: none; max-height: 60vh; overflow: auto;
+}
+.results.open { display: block; }
+.res { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 11px; border-radius: 10px; }
+.res:hover, .res.active { background: var(--d1); }
+.res b { font-weight: 700; }
+.res .path { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); display: block; margin-bottom: 2px; }
+.res .who { display: block; margin-top: 3px; font-size: 12.5px; }
+.res .acc { display: block; font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
+.res mark { background: none; color: var(--ink); box-shadow: inset 0 -0.45em 0 rgba(217, 138, 18, 0.35); }
+.res .none { color: var(--warn); font-weight: 600; }
+.res-empty { padding: 10px 12px; color: var(--ink-dim); }
+.right { display: flex; gap: 8px; }
+.ibtn {
+  height: 38px; min-width: 38px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  font-weight: 600; font-size: 13px;
+}
+.ibtn[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+.badge { font-family: var(--mono); font-size: 11px; background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 7px; }
+.pop {
+  position: fixed; top: 60px; right: 16px; z-index: 6; width: 300px; max-height: 70vh; overflow: auto;
+  border-radius: 16px; padding: 10px; display: none;
+}
+.pop.open { display: block; }
+.pop h4 { margin: 8px 8px 4px; font-size: 11px; font-family: var(--mono); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); }
+.pop button.item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 8px; }
+.pop button.item:hover { background: var(--d1); }
+.pop .ok { padding: 8px; color: var(--ink-dim); }
+
+/* ---------- detail panel ---------- */
+.panel {
+  position: fixed; top: 66px; right: 16px; bottom: 16px; width: 350px; z-index: 4;
+  border-radius: 20px; padding: 18px 18px 22px; overflow: auto;
+  transform: translateX(calc(100% + 30px)); transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
+}
+.panel.open { transform: none; }
+.panel .kind { font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-dim); display: flex; justify-content: space-between; align-items: center; }
+.panel .x { border: 0; background: none; font-size: 20px; line-height: 1; padding: 2px 4px; color: var(--ink-dim); }
+.panel .name {
+  width: 100%; border: 0; border-bottom: 1px solid transparent; background: none; outline: none;
+  font-family: var(--display); font-size: 26px; padding: 4px 0 6px; margin: 2px 0 6px;
+}
+.panel .name:focus { border-bottom-color: var(--line); }
+.panel .crumb { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 14px; }
+.panel .crumb button { border: 0; background: none; padding: 0; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; color: inherit; }
+.panel section { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.panel label.h { display: block; font-size: 11px; font-family: var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 8px; }
+.panel textarea, .panel input.t, .panel select {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--d1); padding: 8px 10px; outline: none; resize: vertical;
+}
+.panel textarea:focus, .panel input.t:focus { border-color: var(--ink-dim); }
+.accs { display: flex; flex-direction: column; gap: 6px; }
+.acc { display: flex; gap: 6px; align-items: center; }
+.acc input { flex: 1; }
+.acc.dup input { border-color: var(--warn); }
+.mini { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; }
+.mini:hover { background: var(--d1); }
+.del { border: 0; background: none; color: var(--ink-dim); font-size: 17px; padding: 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 5px 11px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--mark); color: var(--bg); border-color: var(--mark); }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.rel { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
+.rel .k { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); white-space: nowrap; }
+.rel .go { border: 0; background: none; padding: 0; text-align: left; font-weight: 600; flex: 1; }
+.addrel { display: flex; gap: 6px; margin-top: 6px; }
+.addrel select { flex: 1; padding: 6px 8px; font-size: 12.5px; }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.sw { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); padding: 0; }
+.sw[aria-pressed="true"] { outline: 2px solid var(--mark); outline-offset: 2px; }
+.note { font-size: 12.5px; color: var(--warn); margin: 4px 0 0; }
+.danger { margin-top: 18px; border: 1px solid var(--line); background: none; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: var(--ink-dim); }
+.danger:hover { color: #c0392b; border-color: #c0392b; }
+.load { height: 6px; background: var(--d1); border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
+.load i { display: block; height: 100%; background: var(--ink-dim); border-radius: 3px; }
+.load.heavy i { background: var(--warn); }
+
+/* ---------- bottom ---------- */
+.hint {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 3;
+  padding: 8px 16px; font-size: 12.5px; color: var(--ink-dim); max-width: calc(100% - 32px); text-align: center;
+  transition: color 0.2s;
+}
+.hint.live { color: var(--ink); border-color: var(--ink-dim); }
+.corner { position: fixed; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 6px; }
+.legend { position: fixed; right: 16px; bottom: 16px; z-index: 3; padding: 8px 14px; font-size: 12px; display: none; gap: 14px; color: var(--ink-dim); }
+.legend.on { display: flex; }
+.panel.open ~ .legend { right: 382px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* svg text */
+.lbl-role { font-family: var(--text); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-area { font-family: var(--display); font-weight: 600; fill: var(--ink); pointer-events: none; letter-spacing: 0.02em; }
+.lbl-person { font-family: var(--display); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-dim); text-anchor: middle; pointer-events: none; }
+.chipt { font-family: var(--mono); font-size: 8.5px; font-weight: 500; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lnk-t { font-family: var(--mono); font-size: 10px; fill: var(--ink-dim); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+
+@media (max-width: 760px) {
+  .top { flex-wrap: wrap; left: 10px; right: 10px; top: 10px; gap: 8px; }
+  .brand { font-size: 20px; }
+  .search { order: 5; flex-basis: 100%; max-width: none; }
+  .right { margin-left: auto; }
+  .ibtn .lt { display: none; }
+  .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 56vh; transform: translateY(calc(100% + 30px)); }
+  .pop { top: 104px; right: 10px; width: calc(100% - 20px); }
+  .hint { bottom: 62px; font-size: 12px; }
+  .legend { display: none !important; }
+}
+</style>
+</head>
+<body>
+
+<svg id="stage" aria-label="Gefüge der Zuständigkeiten">
+  <defs>
+    <filter id="goo" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b" />
+      <feColorMatrix in="b" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 26 -11" result="g" />
+      <feMorphology id="erode" in="g" operator="erode" radius="1" result="e" />
+      <feComposite in="g" in2="e" operator="out" result="ring0" />
+      <feFlood id="oc" flood-color="#595959" result="oc" />
+      <feComposite in="oc" in2="ring0" operator="in" result="ring" />
+      <feMerge><feMergeNode in="g" /><feMergeNode in="ring" /></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#888" stroke-width="1.4" />
+    </marker>
+    <marker id="arrowHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#111" stroke-width="1.4" />
+    </marker>
+  </defs>
+  <g id="world">
+    <g id="gArea" filter="url(#goo)"></g>
+    <g id="gLink"></g>
+    <g id="gRole" filter="url(#goo)"></g>
+    <g id="gTop"></g>
+  </g>
+</svg>
+
+<div class="top">
+  <div class="brand">Gefüge</div>
+  <div class="lenses pill" role="group" aria-label="Linse">
+    <button data-lens="kreise">Bereiche</button>
+    <button data-lens="menschen">Menschen</button>
+    <button data-lens="netz">Netz</button>
+  </div>
+  <div class="search">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <input id="q" class="pill" type="search" placeholder="Wer ist zuständig für …?" autocomplete="off" />
+    <div id="results" class="results pill"></div>
+  </div>
+  <div class="right">
+    <button id="gapsBtn" class="ibtn pill" aria-pressed="false" title="Lücken und Überlast zeigen"><span class="lt">Lücken</span><span id="gapCount" class="badge">0</span></button>
+    <button id="addBtn" class="ibtn pill" title="Neu anlegen">+</button>
+    <button id="themeBtn" class="ibtn pill" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8 A6.2 6.2 0 0 1 8 14.2 Z" fill="currentColor"/></svg></button>
+    <button id="menuBtn" class="ibtn pill" title="Menü">☰</button>
+  </div>
+</div>
+
+<div id="gapsPop" class="pop pill"></div>
+<div id="addPop" class="pop pill">
+  <button class="item" data-add="area">Neuer Bereich</button>
+  <button class="item" data-add="role">Neue Rolle</button>
+  <button class="item" data-add="person">Neue Person</button>
+</div>
+<div id="menuPop" class="pop pill">
+  <button class="item" data-m="fit">Alles zeigen</button>
+  <button class="item" data-m="export">Als Datei sichern (JSON)</button>
+  <button class="item" data-m="import">Datei laden …</button>
+  <button class="item" data-m="example">Beispiel-Firma laden</button>
+  <button class="item" data-m="clear">Leeres Gefüge</button>
+  <h4>Bedienung</h4>
+  <div class="ok">Doppelklick legt an: auf einen Bereich eine Rolle, auf eine Person eine Rolle für sie, auf die freie Fläche einen Bereich bzw. eine Person. Ziehen ordnet zu, Shift beim Loslassen teilt statt verschiebt. Entf löscht, Strg/Cmd+Z macht rückgängig, 1 2 3 wechselt die Linse, / sucht.</div>
+  <input id="file" type="file" accept="application/json,.json" hidden />
+</div>
+
+<aside id="panel" class="panel pill" aria-live="polite"></aside>
+
+<div class="corner">
+  <button id="undoBtn" class="ibtn pill" title="Rückgängig (Strg/Cmd+Z)">↶</button>
+  <button id="redoBtn" class="ibtn pill" title="Wiederholen (Strg/Cmd+Shift+Z)">↷</button>
+</div>
+<div id="hint" class="hint pill"></div>
+<div id="legend" class="legend pill"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const svgNS = "http://www.w3.org/2000/svg";
+const KEY = "gefuege.v1";
+const PALETTE = ["#f2b49c", "#a6c6ea", "#d4b0e0", "#a5d6b7", "#eed585", "#efa9c0", "#b4d4cc", "#e6bf96"];
+const KINDS = {
+  liefert: { label: "liefert an", arrow: true, dash: null, w: 1.3 },
+  zusammen: { label: "arbeitet mit", arrow: false, dash: null, w: 2.4 },
+  unterstuetzt: { label: "unterstützt", arrow: true, dash: "5 5", w: 1.3 },
+};
+const HEAVY = 4; // ab so vielen Rollen gilt eine Person als ausgelastet
+const LENS_HINT = {
+  kreise: "Bereiche und ihre Rollen. Rolle in einen anderen Bereich ziehen verschiebt sie. Personen-Punkt auf eine Rolle ziehen überträgt die Aufgabe, mit Shift teilt ihr sie.",
+  menschen: "Wer trägt welche Rollen. Rolle auf eine Person ziehen überträgt sie, mit Shift teilt ihr sie. Auf die freie Fläche ziehen gibt sie ab.",
+  netz: "Wie die Rollen zusammenarbeiten. Rolle auf eine andere ziehen verbindet sie, die Art der Beziehung stellst du rechts ein.",
+};
+
+const uid = () => Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-3);
+
+// ---------- Beispiel ----------
+function example() {
+  const A = [
+    ["leitung", "Leitung", 0, "Richtung geben und die Firma zusammenhalten"],
+    ["projekte", "Projekte", 1, "Kundenprojekte sicher ans Ziel bringen"],
+    ["gestaltung", "Gestaltung", 2, "Gute Arbeit, die man sieht"],
+    ["technik", "Technik", 3, "Alles, was läuft und laufen muss"],
+    ["finanzen", "Finanzen & Verwaltung", 4, "Geld, Papier und Ordnung"],
+    ["komm", "Kommunikation", 5, "Wie man uns draußen wahrnimmt"],
+  ];
+  const P = ["Anna Keller", "Jonas Weber", "Mira Schmid", "Lukas Brandt", "Sofia Roth", "David Frey", "Lea Huber", "Tim Vogel"];
+  const pid = (n) => "p" + P.indexOf(n);
+  const R = [
+    ["gf", "leitung", "Geschäftsführung", "Die Firma gesund und auf Kurs halten", ["Strategie und Jahresziele festlegen", "Budget freigeben", "Verträge ab 10'000 unterschreiben"], ["Anna Keller"]],
+    ["personal", "leitung", "Personal", "Gute Leute finden und halten", ["Stellen ausschreiben", "Bewerbungsgespräche führen", "Onboarding neuer Mitarbeitender"], ["Anna Keller", "Lea Huber"]],
+    ["datenschutz", "leitung", "Datenschutz", "Daten von Kunden und Team schützen", ["Datenschutzanfragen beantworten", "Verarbeitungsverzeichnis führen"], ["Lea Huber"]],
+    ["pl", "projekte", "Projektleitung", "Projekte in Zeit und Budget liefern", ["Angebote schreiben", "Zeitplan und Budget im Projekt halten", "Ansprechperson für Kunden", "Rechnungen an Kunden auslösen"], ["Jonas Weber", "Mira Schmid"]],
+    ["kunden", "projekte", "Kundenpflege", "Kunden kommen gerne wieder", ["Bestandskunden betreuen", "Feedback nach Projektende einholen"], ["Jonas Weber"]],
+    ["ressourcen", "projekte", "Ressourcenplanung", "Die richtigen Leute zur richtigen Zeit", ["Auslastung planen", "Freelancer buchen"], []],
+    ["ad", "gestaltung", "Art Direction", "Gestalterische Qualität über alle Projekte", ["Gestalterische Qualität sichern", "Konzepte beim Kunden präsentieren"], ["Mira Schmid"]],
+    ["design", "gestaltung", "Design", "Entwürfe, die tragen", ["Entwürfe ausarbeiten", "Reinzeichnung und Druckdaten"], ["Sofia Roth", "Tim Vogel"]],
+    ["bildrechte", "gestaltung", "Bildrechte", "Nur verwenden, was wir dürfen", ["Lizenzen prüfen", "Bildarchiv pflegen"], []],
+    ["dev", "technik", "Entwicklung", "Websites und Apps umsetzen", ["Websites umsetzen", "Code-Reviews"], ["Lukas Brandt", "David Frey"]],
+    ["it", "technik", "IT & Geräte", "Alle können arbeiten", ["Laptops und Lizenzen verwalten", "Passwörter und Zugänge", "Backups"], ["David Frey"]],
+    ["hosting", "technik", "Hosting", "Kundenseiten laufen stabil", ["Server betreiben", "Updates einspielen"], ["Lukas Brandt"]],
+    ["buha", "finanzen", "Buchhaltung", "Zahlen stimmen, Rechnungen gehen raus", ["Rechnungen an Kunden auslösen", "Belege erfassen", "Löhne auszahlen"], ["Lea Huber"]],
+    ["controlling", "finanzen", "Controlling", "Wissen, wo wir stehen", ["Monatszahlen auswerten", "Liquidität planen"], ["Anna Keller"]],
+    ["buero", "finanzen", "Büro", "Ein Ort, an dem man gern arbeitet", ["Post und Telefon", "Büromaterial bestellen", "Schlüssel verwalten"], ["Lea Huber"]],
+    ["social", "komm", "Social Media", "Zeigen, woran wir arbeiten", ["Beiträge planen", "Community betreuen"], ["Tim Vogel"]],
+    ["web", "komm", "Website & Newsletter", "Unser Schaufenster", ["Newsletter versenden", "Referenzen pflegen"], ["Sofia Roth"]],
+    ["presse", "komm", "Presse", "Gut in den Medien vorkommen", ["Medienanfragen beantworten"], []],
+  ];
+  const L = [
+    ["design", "pl", "liefert"], ["pl", "buha", "liefert"], ["buha", "controlling", "liefert"], ["controlling", "gf", "liefert"],
+    ["dev", "design", "zusammen"], ["ad", "design", "unterstuetzt"], ["it", "dev", "unterstuetzt"], ["dev", "hosting", "liefert"],
+    ["kunden", "pl", "zusammen"], ["web", "social", "zusammen"], ["personal", "gf", "zusammen"], ["ressourcen", "pl", "liefert"],
+    ["design", "web", "liefert"], ["datenschutz", "it", "unterstuetzt"],
+  ];
+  return {
+    areas: A.map(([id, name, c, purpose]) => ({ id, name, color: PALETTE[c], purpose })),
+    people: P.map((name, i) => ({ id: "p" + i, name })),
+    roles: R.map(([id, area, name, purpose, acc, ppl]) => ({ id, area, name, purpose, acc, people: ppl.map(pid) })),
+    links: L.map(([from, to, kind]) => ({ id: uid(), from, to, kind })),
+  };
+}
+function emptyModel() {
+  return { areas: [{ id: uid(), name: "Erster Bereich", color: PALETTE[0], purpose: "" }], people: [], roles: [], links: [] };
+}
+
+// ---------- Zustand ----------
+let S = load() || example();
+let lens = readLS("gefuege.lens") || "kreise";
+if (!LENS_HINT[lens]) lens = "kreise";
+let sel = null; // {t: 'role'|'area'|'person', id}
+let query = "";
+let gapsOn = readLS("gefuege.gaps") === "1";
+const undoStack = [], redoStack = [];
+
+function readLS(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function writeLS(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.areas) && Array.isArray(s.roles)) { s.people ||= []; s.links ||= []; return s; }
+  } catch (e) {}
+  return null;
+}
+function save() { writeLS(KEY, JSON.stringify(S)); }
+const snap = () => JSON.stringify(S);
+function change(fn, opts = {}) {
+  const prev = snap();
+  fn();
+  if (snap() !== prev) { undoStack.push(prev); if (undoStack.length > 150) undoStack.shift(); redoStack.length = 0; }
+  afterChange(opts);
+}
+function afterChange(opts = {}) {
+  layoutVersion++;
+  clean();
+  save();
+  relayout(opts);
+  renderPanel();
+  updateGaps();
+  if (query) runSearch(false);
+}
+function clean() {
+  const aids = new Set(S.areas.map((a) => a.id)), pids = new Set(S.people.map((p) => p.id));
+  if (!S.areas.length) S.areas.push({ id: uid(), name: "Bereich", color: PALETTE[0], purpose: "" });
+  for (const r of S.roles) { if (!aids.has(r.area)) r.area = S.areas[0].id; r.people = [...new Set(r.people.filter((p) => pids.has(p)))]; }
+  const rids = new Set(S.roles.map((r) => r.id));
+  S.links = S.links.filter((l) => rids.has(l.from) && rids.has(l.to) && l.from !== l.to);
+  if (sel) {
+    const ok = sel.t === "role" ? rids.has(sel.id) : sel.t === "area" ? aids.has(sel.id) : pids.has(sel.id);
+    if (!ok) sel = null;
+  }
+}
+function doUndo() { if (!undoStack.length) return; redoStack.push(snap()); S = JSON.parse(undoStack.pop()); afterChange(); }
+function doRedo() { if (!redoStack.length) return; undoStack.push(snap()); S = JSON.parse(redoStack.pop()); afterChange(); }
+
+const role = (id) => S.roles.find((r) => r.id === id);
+const area = (id) => S.areas.find((a) => a.id === id);
+const person = (id) => S.people.find((p) => p.id === id);
+const rolesOf = (pid) => S.roles.filter((r) => r.people.includes(pid));
+const initials = (n) => n.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- Farben ----------
+let TC = {};
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n) => cs.getPropertyValue(n).trim();
+  TC = { d0: g("--d0"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn") };
+  TC.dark = lum(hex(TC.d0)) < 0.4;
+  $("#oc").setAttribute("flood-color", TC.outline);
+  $("#arrow path").setAttribute("stroke", TC.dim);
+  $("#arrowHot path").setAttribute("stroke", TC.mark);
+}
+function hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+function lum([r, g, b]) { return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
+function mix(a, b, t) { const A = hex(a), B = hex(b); return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
+function tint(c, k) { return TC.dark ? mix(c, TC.d0, 0.35 + k * 0.5) : mix(c, TC.d0, k); }
+
+// ---------- Layout ----------
+// Jede Linse liefert Zielwerte für alle Elemente; dazwischen wird weich übergeblendet.
+// Schlüssel: a|bereich, h|rolle (Hof im Netz), r|rolle, p|person, la|lr|lp Beschriftungen, c|rolle|person Personen-Punkte, l|beziehung
+let cur = new Map();
+const seeds = { menschen: new Map(), netz: new Map() };
+const roleR = (r) => Math.min(50, 27 + 4.5 * r.acc.length);
+const personR = (p) => 40 + 7 * Math.min(8, rolesOf(p.id).length);
+
+function layout(which) {
+  const L = new Map();
+  if (which === "kreise") layoutKreise(L);
+  else if (which === "menschen") layoutMenschen(L);
+  else layoutNetz(L);
+  // was in dieser Linse nicht vorkommt, schrumpft an Ort und Stelle
+  const hide = (k, x, y) => { if (!L.has(k)) { const c = cur.get(k); L.set(k, { x: c ? c.x : x, y: c ? c.y : y, r: 0, o: 0, s: c ? c.s : 12 }); } };
+  for (const r of S.roles) {
+    const p = L.get("r|" + r.id);
+    hide("h|" + r.id, p.x, p.y);
+    for (const pid of r.people) hide(`c|${r.id}|${pid}`, p.x, p.y);
+  }
+  for (const a of S.areas) hide("a|" + a.id, 0, 0), hide("la|" + a.id, 0, 0);
+  for (const p of S.people) hide("p|" + p.id, 0, 0), hide("lp|" + p.id, 0, 0);
+  for (const l of S.links) if (!L.has("l|" + l.id)) L.set("l|" + l.id, { o: 0 });
+  return L;
+}
+
+function roleLabel(L, r, x, y, rad, withChips) {
+  const s = Math.max(10.5, Math.min(15, rad * 0.27));
+  L.set("lr|" + r.id, { x, y: y - (withChips && r.people.length ? rad * 0.16 : 0), r: rad, o: 1, s });
+  if (withChips) {
+    const n = r.people.length, step = 21, cy = y + Math.min(rad * 0.52, rad - 12);
+    r.people.forEach((pid, i) => L.set(`c|${r.id}|${pid}`, { x: x + (i - (n - 1) / 2) * step, y: cy, r: 9.5, o: 1 }));
+  }
+}
+
+function layoutKreise(L) {
+  const data = { children: S.areas.map((a) => ({ a, children: S.roles.filter((r) => r.area === a.id).map((r) => ({ r })) })) };
+  const root = d3.hierarchy(data, (d) => d.children).sum((d) => (d.r ? 1 + 0.3 * d.r.acc.length : d.a && !(d.children || []).length ? 1.4 : 0));
+  const side = 300 * Math.sqrt(S.roles.length + S.areas.length + 1);
+  d3.pack().size([side, side]).padding((d) => (d.depth === 0 ? 36 : 32))(root);
+  for (const n of root.descendants()) {
+    const x = n.x - side / 2, y = n.y - side / 2;
+    if (n.data.a) {
+      const s = Math.max(13, Math.min(20, n.r * 0.085));
+      L.set("a|" + n.data.a.id, { x, y, r: n.r, o: 1 });
+      L.set("la|" + n.data.a.id, { x, y, r: n.r - 0.72 * s - 8, o: 1, s });
+    } else if (n.data.r) {
+      L.set("r|" + n.data.r.id, { x, y, r: n.r, o: 1 });
+      roleLabel(L, n.data.r, x, y, n.r, true);
+    }
+  }
+  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+}
+
+let layoutVersion = 0;
+function runSim(nodes, seed, setup, ticks = 320) {
+  // gleiche Daten, gleiche Karte: nur neu rechnen, wenn sich etwas geändert hat
+  if (seed.ver === layoutVersion && nodes.every((n) => seed.has(n.key))) {
+    for (const n of nodes) { const s = seed.get(n.key); n.x = s.x; n.y = s.y; }
+    return;
+  }
+  seed.ver = layoutVersion;
+  for (const n of nodes) { const s = seed.get(n.key) || cur.get(n.key); if (s && isFinite(s.x)) { n.x = s.x; n.y = s.y; } }
+  const sim = d3.forceSimulation(nodes).stop();
+  setup(sim);
+  for (let i = 0; i < ticks; i++) sim.tick();
+  for (const n of nodes) seed.set(n.key, { x: n.x, y: n.y });
+}
+
+function layoutMenschen(L) {
+  const P = S.people.map((p) => ({ key: "p|" + p.id, id: p.id, r: personR(p), kind: "p" }));
+  const byId = new Map(P.map((n) => [n.id, n]));
+  const R = S.roles.map((r) => ({ key: "r|" + r.id, id: r.id, r: roleR(r), kind: "r", free: !r.people.length }));
+  const links = [];
+  // Rollen überlappen ihre Person leicht, damit sie wie Tropfen mit ihr verschmelzen
+  for (const n of R) for (const pid of role(n.id).people) links.push({ source: n, target: byId.get(pid), d: n.r + byId.get(pid).r - 8 });
+  const spread = 140 * Math.sqrt(P.length + 1);
+  runSim([...P, ...R], seeds.menschen, (sim) => {
+    sim.force("link", d3.forceLink(links).distance((l) => l.d).strength(1).iterations(3))
+      .force("charge", d3.forceManyBody().strength((n) => (n.kind === "p" ? -1500 : -90)))
+      .force("collide", d3.forceCollide((n) => (n.kind === "p" ? n.r + 2 : n.r - 6)).iterations(2))
+      .force("x", d3.forceX((n) => (n.free ? spread + 120 : 0)).strength((n) => (n.free ? 0.2 : 0.05)))
+      .force("y", d3.forceY(0).strength((n) => (n.free ? 0.1 : 0.06)));
+  });
+  for (const n of P) {
+    L.set(n.key, { x: n.x, y: n.y, r: n.r, o: 1 });
+    L.set("lp|" + n.id, { x: n.x, y: n.y, r: n.r, o: 1, s: Math.min(19, 13 + n.r * 0.05) });
+  }
+  for (const n of R) { L.set(n.key, { x: n.x, y: n.y, r: n.r, o: 1 }); roleLabel(L, role(n.id), n.x, n.y, n.r, false); }
+  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+}
+
+function layoutNetz(L) {
+  const n = S.areas.length, ring = 150 + 70 * Math.sqrt(S.roles.length);
+  const centers = new Map(S.areas.map((a, i) => [a.id, { x: Math.cos((i / n) * 2 * Math.PI - Math.PI / 2) * ring, y: Math.sin((i / n) * 2 * Math.PI - Math.PI / 2) * ring }]));
+  const R = S.roles.map((r) => ({ key: "r|" + r.id, id: r.id, r: roleR(r), a: r.area }));
+  const byId = new Map(R.map((x) => [x.id, x]));
+  const links = S.links.map((l) => ({ source: byId.get(l.from), target: byId.get(l.to), same: role(l.from).area === role(l.to).area }));
+  runSim(R, seeds.netz, (sim) => {
+    sim.force("link", d3.forceLink(links).distance((l) => (l.same ? 120 : 220)).strength(0.08))
+      .force("charge", d3.forceManyBody().strength(-260))
+      .force("collide", d3.forceCollide((x) => x.r + 26).iterations(2))
+      .force("x", d3.forceX((x) => centers.get(x.a).x).strength(0.2))
+      .force("y", d3.forceY((x) => centers.get(x.a).y).strength(0.2));
+  });
+  for (const x of R) {
+    L.set(x.key, { x: x.x, y: x.y, r: x.r, o: 1 });
+    L.set("h|" + x.id, { x: x.x, y: x.y, r: x.r + 36, o: 1 });
+    roleLabel(L, role(x.id), x.x, x.y, x.r, true);
+  }
+  for (const a of S.areas) {
+    const mine = R.filter((x) => x.a === a.id);
+    const c = mine.length ? { x: d3.mean(mine, (m) => m.x), y: d3.mean(mine, (m) => m.y) } : centers.get(a.id);
+    const rad = mine.length ? d3.max(mine, (m) => Math.hypot(m.x - c.x, m.y - c.y) + m.r + 36) : 60;
+    const s = 16;
+    L.set("a|" + a.id, { x: c.x, y: c.y, r: mine.length ? 0 : 60, o: 1 });
+    L.set("la|" + a.id, { x: c.x, y: c.y, r: rad + 6, o: 1, s });
+  }
+  for (const l of S.links) L.set("l|" + l.id, { o: 1 });
+}
+
+// ---------- Animation ----------
+let anim = null, dragKeys = new Set();
+function relayout(opts = {}) {
+  const tgt = layout(lens);
+  const from = new Map();
+  for (const [k, v] of cur) from.set(k, { ...v });
+  for (const [k, v] of tgt) if (!from.has(k)) from.set(k, { ...v, r: 0, o: 0 });
+  for (const [k, v] of from) if (!tgt.has(k)) tgt.set(k, { ...v, r: 0, o: 0, gone: true });
+  const t0 = performance.now(), dur = opts.instant ? 0 : opts.dur || 750;
+  cancelAnimationFrame(anim);
+  const step = (now) => {
+    const t = dur ? Math.min(1, (now - t0) / dur) : 1, e = d3.easeCubicInOut(t);
+    for (const [k, b] of tgt) {
+      if (dragKeys.has(k)) continue;
+      const a = from.get(k), c = {};
+      for (const p of ["x", "y", "r", "o", "s"]) if (b[p] !== undefined || a[p] !== undefined) {
+        const av = a[p] ?? b[p], bv = b[p] ?? a[p];
+        c[p] = av + (bv - av) * e;
+      }
+      cur.set(k, c);
+    }
+    if (t >= 1) for (const [k, b] of tgt) if (b.gone) { cur.delete(k); drop(k); }
+    render();
+    if (t < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+  paint();
+  if (opts.fit) fit(tgt, opts.instant ? 0 : 800);
+}
+
+// ---------- Zeichnen ----------
+const els = new Map();
+const G = { a: $("#gArea"), h: $("#gArea"), l: $("#gLink"), r: $("#gRole"), p: $("#gRole") };
+function mk(tag, attrs, parent) { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function drop(k) { const e = els.get(k); if (e) { e.remove(); if (e._sub) e._sub.remove(); els.delete(k); } }
+function ensure(k) {
+  let e = els.get(k);
+  if (e) return e;
+  const t = k.split("|")[0];
+  if (t === "a" || t === "h" || t === "r" || t === "p") {
+    e = mk("circle", { "data-k": k }, G[t]);
+    if (t === "h") G.h.insertBefore(e, G.h.firstChild);
+  } else if (t === "l") {
+    e = mk("g", {}, G.l);
+    e._p = mk("path", { fill: "none", "marker-end": "url(#arrow)" }, e);
+    e._t = mk("text", { class: "lnk-t" }, e);
+  } else if (t === "la") {
+    e = mk("g", {}, $("#gTop"));
+    const id = "arc-" + k.slice(3);
+    e._p = mk("path", { id, fill: "none" }, e);
+    e._t = mk("text", { class: "lbl-area" }, e);
+    e._tp = mk("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, e._t);
+  } else if (t === "lr" || t === "lp") {
+    e = mk("text", { class: t === "lr" ? "lbl-role" : "lbl-person" }, $("#gTop"));
+  } else if (t === "c") {
+    e = mk("g", { "data-k": k }, $("#gTop"));
+    e._c = mk("circle", { r: 9.5 }, e);
+    e._t = mk("text", { class: "chipt" }, e);
+  }
+  els.set(k, e);
+  paintOne(k, e);
+  return e;
+}
+
+function wrapLines(text, r, s) {
+  const max = Math.max(5, Math.floor((r * 1.55) / (s * 0.56)));
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    if (!line) line = w;
+    else if ((line + " " + w).length <= max) line += " " + w;
+    else { lines.push(line); line = w; }
+  }
+  if (line) lines.push(line);
+  if (lines.length > 3) { lines.length = 3; lines[2] += " …"; }
+  return lines.length ? lines : ["…"];
+}
+function setLines(e, lines, x, y, s, lh = 1.15) {
+  const key = lines.join("\n") + "|" + s;
+  if (e._key !== key) {
+    e._key = key;
+    e.textContent = "";
+    lines.forEach((ln) => { const ts = mk("tspan", {}, e); ts.textContent = ln; });
+    e.setAttribute("font-size", s);
+  }
+  const top = y - ((lines.length - 1) * s * lh) / 2;
+  [...e.childNodes].forEach((ts, i) => { ts.setAttribute("x", x); ts.setAttribute("y", top + i * s * lh); });
+}
+
+function render() {
+  for (const [k, v] of cur) {
+    const t = k.split("|")[0];
+    const e = ensure(k);
+    if (t === "a" || t === "h" || t === "r" || t === "p") {
+      e.setAttribute("cx", v.x.toFixed(1)); e.setAttribute("cy", v.y.toFixed(1)); e.setAttribute("r", Math.max(0, v.r).toFixed(1));
+      e.style.display = v.r < 0.5 ? "none" : "";
+    } else if (t === "la") {
+      const R = Math.max(1, v.r);
+      e._p.setAttribute("d", `M ${v.x - R},${v.y} A ${R},${R} 0 0 1 ${v.x + R},${v.y}`);
+      e._t.setAttribute("font-size", (v.s || 15).toFixed(1));
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "lr") {
+      const r = role(k.slice(3)); if (!r) continue;
+      setLines(e, wrapLines(r.name, v.r, Math.round(v.s || 12)), v.x, v.y, Math.round(v.s || 12));
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 || v.r < 14 ? "none" : "";
+    } else if (t === "lp") {
+      const p = person(k.slice(3)); if (!p) continue;
+      const s = Math.round(v.s || 15);
+      setLines(e, wrapLines(p.name, v.r, s), v.x, v.y - 6, s, 1.1);
+      if (!e._sub) e._sub = mk("text", { class: "lbl-sub" }, $("#gTop"));
+      const n = rolesOf(p.id).length;
+      e._sub.textContent = n === 1 ? "1 Rolle" : n + " Rollen";
+      e._sub.setAttribute("x", v.x); e._sub.setAttribute("y", v.y + (e.childNodes.length * s * 1.1) / 2 + 8);
+      e.style.opacity = e._sub.style.opacity = v.o;
+      e.style.display = e._sub.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "c") {
+      e.setAttribute("transform", `translate(${v.x.toFixed(1)},${v.y.toFixed(1)})`);
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "l") {
+      const l = S.links.find((x) => x.id === k.slice(2));
+      const a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
+      if (!a || !b || v.o < 0.02) { e.style.display = "none"; continue; }
+      e.style.display = ""; e.style.opacity = v.o;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d, bend = Math.min(60, d * 0.18);
+      const mx = (a.x + b.x) / 2 - uy * bend, my = (a.y + b.y) / 2 + ux * bend;
+      const s1 = a.r + 4, s2 = b.r + 6;
+      const p0 = towards(a, mx, my, s1), p1 = towards(b, mx, my, s2);
+      e._p.setAttribute("d", `M ${p0.x},${p0.y} Q ${mx},${my} ${p1.x},${p1.y}`);
+      e._t.setAttribute("x", (p0.x + 2 * mx + p1.x) / 4); e._t.setAttribute("y", (p0.y + 2 * my + p1.y) / 4 - 4);
+    }
+  }
+  renderRings();
+}
+function towards(a, x, y, dist) { const dx = x - a.x, dy = y - a.y, d = Math.hypot(dx, dy) || 1; return { x: +(a.x + (dx / d) * dist).toFixed(1), y: +(a.y + (dy / d) * dist).toFixed(1) }; }
+
+// Farben, Hervorhebung und Abblenden – nur wenn sich etwas ändert
+let focusSet = null; // Set von Schlüsseln, die bei einer Suche hervorgehoben bleiben
+function isDim(k) { return focusSet && !focusSet.has(k); }
+function paintOne(k, e) {
+  const [t, id, id2] = k.split("|");
+  const D = (c) => (isDim(k) ? mix(c, TC.d0, 0.82) : c);
+  if (t === "a") { const a = area(id); if (a) e.setAttribute("fill", D(tint(a.color, 0.78))); }
+  else if (t === "h") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(a.color, 0.62))); }
+  else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(a.color, lens === "kreise" ? 0.3 : 0.12))); }
+  else if (t === "p") e.setAttribute("fill", D(TC.d0));
+  else if (t === "la") { const a = area(id); if (a) e._tp.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
+  else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+  else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
+  else if (t === "c") {
+    const p = person(id2), heavy = gapsOn && p && rolesOf(p.id).length >= HEAVY;
+    e._c.setAttribute("fill", TC.d0);
+    e._c.setAttribute("stroke", heavy ? TC.warn : TC.outline);
+    e._c.setAttribute("stroke-width", heavy ? 1.8 : 0.8);
+    e._t.textContent = p ? initials(p.name) : "";
+    e.style.filter = isDim(k) ? "opacity(0.3)" : "";
+    const tt = e.querySelector("title") || mk("title", {}, e); tt.textContent = p ? p.name : "";
+  } else if (t === "l") {
+    const l = S.links.find((x) => x.id === id); if (!l) return;
+    const K = KINDS[l.kind] || KINDS.liefert;
+    const hot = sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id);
+    e._p.setAttribute("stroke", hot ? TC.mark : TC.dim);
+    e._p.setAttribute("stroke-width", K.w * (hot ? 1.4 : 1));
+    e._p.setAttribute("stroke-dasharray", K.dash || "");
+    e._p.setAttribute("marker-end", K.arrow ? (hot ? "url(#arrowHot)" : "url(#arrow)") : "");
+    e._p.setAttribute("vector-effect", "non-scaling-stroke");
+    e._t.textContent = hot ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
+    e.style.filter = focusSet && !(focusSet.has("r|" + l.from) && focusSet.has("r|" + l.to)) ? "opacity(0.25)" : "";
+  }
+}
+function paint() { for (const [k, e] of els) paintOne(k, e); renderLegend(); }
+
+// Ringe: Auswahl, Lücken, Ziel beim Ziehen
+const ringPool = [];
+let dropKey = null;
+function renderRings() {
+  const want = [];
+  const selKey = sel ? (sel.t === "role" ? "r|" : sel.t === "area" ? "a|" : "p|") + sel.id : null;
+  if (gapsOn) {
+    for (const r of S.roles) if (!r.people.length) want.push({ k: "r|" + r.id, c: TC.warn, dash: "4 4", w: 1.6, pad: 5 });
+    for (const p of S.people) if (rolesOf(p.id).length >= HEAVY || !rolesOf(p.id).length) want.push({ k: "p|" + p.id, c: TC.warn, dash: rolesOf(p.id).length ? "" : "4 4", w: 2, pad: 6 });
+  }
+  if (selKey) {
+    let k = selKey;
+    if (sel.t === "area" && lens === "netz") k = null; // im Netz hat der Bereich keinen Kreis
+    if (sel.t === "person" && lens !== "menschen") for (const r of rolesOf(sel.id)) want.push({ k: `c|${r.id}|${sel.id}`, c: TC.mark, w: 1.6, pad: 3, chip: true });
+    if (k) want.push({ k, c: TC.mark, w: 1.6, pad: 5 });
+  }
+  if (dropKey) want.push({ k: dropKey, c: TC.mark, w: 2.2, pad: 9, dash: "2 5" });
+  while (ringPool.length < want.length) ringPool.push(mk("circle", { fill: "none", "vector-effect": "non-scaling-stroke", "pointer-events": "none" }, $("#gTop")));
+  ringPool.forEach((c, i) => {
+    const w = want[i], v = w && cur.get(w.k);
+    if (!w || !v || (v.r !== undefined && v.r < 1 && !w.chip) || v.o < 0.05) { c.style.display = "none"; return; }
+    c.style.display = "";
+    c.setAttribute("cx", v.x); c.setAttribute("cy", v.y); c.setAttribute("r", (w.chip ? 9.5 : v.r) + w.pad);
+    c.setAttribute("stroke", w.c); c.setAttribute("stroke-width", w.w); c.setAttribute("stroke-dasharray", w.dash || "");
+  });
+}
+
+function renderLegend() {
+  const lg = $("#legend");
+  const on = lens === "netz" || (sel && sel.t === "role" && S.links.some((l) => l.from === sel.id || l.to === sel.id));
+  lg.classList.toggle("on", !!on);
+  lg.innerHTML = Object.values(KINDS).map((K) => `<span><svg width="28" height="10"><path d="M2 5 H24" stroke="currentColor" stroke-width="${K.w}" ${K.dash ? `stroke-dasharray="${K.dash}"` : ""} ${K.arrow ? 'marker-end="url(#arrow)"' : ""}/></svg>${K.label}</span>`).join("");
+}
+
+// ---------- Zoom ----------
+const svg = d3.select("#stage");
+const zoom = d3.zoom().scaleExtent([0.12, 4])
+  .filter((e) => (!e.target.closest || !e.target.closest("[data-k]")) && (e.type === "wheel" || e.button === 0 || e.button === 1) && e.type !== "dblclick")
+  .on("zoom", (e) => {
+    $("#world").setAttribute("transform", e.transform);
+    $("#erode").setAttribute("radius", Math.max(0.5, 1 / e.transform.k).toFixed(2));
+  });
+svg.call(zoom).on("dblclick.zoom", null);
+function fit(L, dur = 800) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [k, v] of L || cur) {
+    const t = k.split("|")[0];
+    if (!["a", "h", "r", "p"].includes(t) || !(v.r > 1)) continue;
+    x0 = Math.min(x0, v.x - v.r); y0 = Math.min(y0, v.y - v.r); x1 = Math.max(x1, v.x + v.r); y1 = Math.max(y1, v.y + v.r);
+  }
+  if (!isFinite(x0)) return;
+  const W = innerWidth, H = innerHeight, mobile = W < 760;
+  const top = mobile ? 110 : 70, bottom = mobile ? 100 : 60, right = $("#panel").classList.contains("open") && !mobile ? 380 : 20;
+  const k = Math.min(2, Math.min((W - 20 - right) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+  const tx = 10 + (W - 20 - right) / 2 - k * (x0 + x1) / 2, ty = top + (H - top - bottom) / 2 - k * (y0 + y1) / 2;
+  const T = d3.zoomIdentity.translate(tx, ty).scale(k);
+  (dur ? svg.transition().duration(dur).ease(d3.easeCubicInOut) : svg).call(zoom.transform, T);
+}
+function focusOn(k) {
+  const v = cur.get(k); if (!v) return;
+  const t = d3.zoomTransform(svg.node());
+  const W = innerWidth, H = innerHeight, right = $("#panel").classList.contains("open") && W >= 760 ? 380 : 0;
+  const sx = t.applyX(v.x), sy = t.applyY(v.y);
+  if (sx > 40 && sx < W - right - 40 && sy > 90 && sy < H - 60) return;
+  svg.transition().duration(600).call(zoom.translateTo, v.x + (right / 2) / t.k, v.y, [W / 2, H / 2]);
+}
+function worldPoint(e) { const r = svg.node().getBoundingClientRect(); return d3.zoomTransform(svg.node()).invert([e.clientX - r.left, e.clientY - r.top]); }
+
+// ---------- Ziehen ----------
+let drag = null;
+const hint = $("#hint");
+function setHint(text, live) { hint.textContent = text; hint.classList.toggle("live", !!live); }
+function idleHint() { setHint(LENS_HINT[lens]); }
+
+function entityAt(pt, types, exclude) {
+  // kleinster Kreis unter dem Zeiger gewinnt
+  let best = null;
+  for (const [k, v] of cur) {
+    const t = k.split("|")[0];
+    if (!types.includes(t) || exclude.has(k) || !(v.r > 2)) continue;
+    const d = Math.hypot(pt[0] - v.x, pt[1] - v.y);
+    if (d <= v.r + 4 && (!best || v.r < best.v.r)) best = { k, v };
+  }
+  return best && best.k;
+}
+function ownedKeys(k) {
+  const [t, id] = k.split("|");
+  const out = [k];
+  if (t === "r") { out.push("lr|" + id, "h|" + id); for (const pid of role(id).people) out.push(`c|${id}|${pid}`); }
+  if (t === "p") out.push("lp|" + id);
+  return out;
+}
+function nearestHolder(r, pt) {
+  let best = null, bd = Infinity;
+  for (const pid of r.people) { const v = cur.get("p|" + pid); if (!v) continue; const d = Math.hypot(v.x - pt[0], v.y - pt[1]); if (d < bd) { bd = d; best = pid; } }
+  return best;
+}
+
+function planDrop(pt, shift) {
+  const [t, id, id2] = drag.k.split("|");
+  if (t === "r") {
+    const r = role(id);
+    if (lens === "kreise") {
+      const tk = entityAt(pt, ["a"], new Set());
+      const a = tk && area(tk.split("|")[1]);
+      if (a && a.id !== r.area) return { k: tk, text: `„${r.name}“ in den Bereich ${a.name} verschieben`, run: () => { r.area = a.id; } };
+      return { text: "Loslassen lässt die Rolle, wo sie ist" };
+    }
+    if (lens === "menschen") {
+      const tk = entityAt(pt, ["p"], new Set());
+      const p = tk && person(tk.split("|")[1]);
+      const from = drag.from;
+      if (p && !r.people.includes(p.id)) {
+        if (shift || !from) return { k: tk, text: `${p.name} übernimmt „${r.name}“ zusätzlich`, run: () => r.people.push(p.id) };
+        return { k: tk, text: `„${r.name}“ von ${person(from).name} an ${p.name} übergeben (Shift: teilen)`, run: () => { r.people = r.people.filter((x) => x !== from); r.people.push(p.id); } };
+      }
+      if (p) return { k: tk, text: `${p.name} hat diese Rolle schon` };
+      if (from) return { text: `${person(from).name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== from); } };
+      return { text: "Auf eine Person ziehen, um die Rolle zu besetzen" };
+    }
+    const tk = entityAt(pt, ["r"], new Set(ownedKeys(drag.k)));
+    const o = tk && role(tk.split("|")[1]);
+    if (o) {
+      const ex = S.links.find((l) => (l.from === r.id && l.to === o.id) || (l.from === o.id && l.to === r.id));
+      if (ex) return { k: tk, text: `${r.name} und ${o.name} sind schon verbunden` };
+      return { k: tk, text: `${r.name} liefert an ${o.name}`, run: () => { const l = { id: uid(), from: r.id, to: o.id, kind: "liefert" }; S.links.push(l); } };
+    }
+    return { text: "Rolle hier ablegen" };
+  }
+  if (t === "c") {
+    const r = role(id), p = person(id2);
+    const tk = entityAt(pt, ["r"], new Set(["r|" + id]));
+    const o = tk && role(tk.split("|")[1]);
+    if (o && !o.people.includes(p.id)) {
+      if (shift) return { k: tk, text: `${p.name} übernimmt auch „${o.name}“`, run: () => o.people.push(p.id) };
+      return { k: tk, text: `${p.name}: von „${r.name}“ zu „${o.name}“ (Shift: beides)`, run: () => { r.people = r.people.filter((x) => x !== p.id); o.people.push(p.id); } };
+    }
+    if (o) return { k: tk, text: `${p.name} hat „${o.name}“ schon` };
+    const inside = cur.get("r|" + id);
+    if (inside && Math.hypot(pt[0] - inside.x, pt[1] - inside.y) < inside.r) return { text: "Auf eine andere Rolle ziehen" };
+    return { text: `${p.name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== p.id); } };
+  }
+  if (t === "p") return { text: "Person verschieben" };
+  return { text: "" };
+}
+
+const stage = $("#stage");
+stage.addEventListener("pointerdown", (e) => {
+  const tEl = e.target.closest && e.target.closest("[data-k]");
+  if (!tEl || e.button !== 0) return;
+  const k = tEl.dataset.k, t = k.split("|")[0];
+  const pt = worldPoint(e);
+  drag = { k, t, sx: e.clientX, sy: e.clientY, moved: false, pt0: pt, shift: e.shiftKey, plan: null };
+  if (t === "r" && lens === "menschen") drag.from = nearestHolder(role(k.split("|")[1]), pt);
+});
+addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
+  const movable = drag.t === "r" || drag.t === "c" || (drag.t === "p" && lens === "menschen");
+  if (!movable) return;
+  if (!drag.moved) {
+    drag.moved = true; stage.classList.add("dragging");
+    drag.keys = drag.t === "c" ? [drag.k] : ownedKeys(drag.k);
+    drag.start = new Map(drag.keys.map((k) => [k, { ...(cur.get(k) || {}) }]));
+    dragKeys = new Set(drag.keys);
+    // gezogenes Element nach oben
+    const el = els.get(drag.k); if (el) el.parentNode.appendChild(el);
+  }
+  const pt = worldPoint(e), dx = pt[0] - drag.pt0[0], dy = pt[1] - drag.pt0[1];
+  for (const k of drag.keys) { const s = drag.start.get(k), c = cur.get(k); if (c && s.x !== undefined) { c.x = s.x + dx; c.y = s.y + dy; } }
+  drag.plan = planDrop(pt, e.shiftKey);
+  dropKey = drag.plan.k || null;
+  setHint(drag.plan.text, true);
+  render();
+});
+function endDrag(e, cancel) {
+  if (!drag) return;
+  const d = drag; drag = null; dropKey = null; dragKeys = new Set(); stage.classList.remove("dragging");
+  if (d.moved) suppressClick = true;
+  if (!d.moved) {
+    if (cancel) return;
+    const [t, id, id2] = d.k.split("|");
+    if (t === "a" || t === "h") select({ t: "area", id: t === "a" ? id : role(id).area });
+    else if (t === "r") select({ t: "role", id });
+    else if (t === "p") select({ t: "person", id });
+    else if (t === "c") select({ t: "person", id: id2 });
+    return;
+  }
+  idleHint();
+  drag = d;
+  const plan = !cancel && planDrop(worldPoint(e), e.shiftKey);
+  drag = null;
+  if (lens !== "kreise" && d.t !== "c") {
+    // gezogene Position als Startpunkt behalten, damit die Karte nicht umspringt
+    const v = cur.get(d.k); if (v) seeds[lens].set(d.k, { x: v.x, y: v.y });
+    layoutVersion++;
+  }
+  if (plan && plan.run) change(plan.run); else relayout();
+}
+let suppressClick = false;
+addEventListener("pointerup", (e) => endDrag(e, false));
+addEventListener("pointercancel", (e) => endDrag(e, true));
+stage.addEventListener("click", (e) => {
+  if (suppressClick) { suppressClick = false; return; }
+  if (!e.target.closest("[data-k]") && sel) select(null);
+});
+
+stage.addEventListener("dblclick", (e) => {
+  const tEl = e.target.closest("[data-k]");
+  const [t, id] = tEl ? tEl.dataset.k.split("|") : [];
+  const pt = worldPoint(e);
+  if (t === "a" || t === "h") return addRole(t === "a" ? id : role(id).area, null, pt);
+  if (t === "p") return addRole(null, id, pt);
+  if (t === "r" || t === "c") return select({ t: "role", id }, true);
+  if (lens === "menschen") return addPerson(pt);
+  return addArea(pt);
+});
+
+// ---------- Anlegen ----------
+function seedAt(k, pt) { if (pt) for (const L of Object.values(seeds)) L.set(k, { x: pt[0], y: pt[1] }); }
+function addArea(pt) {
+  const used = new Set(S.areas.map((a) => a.color));
+  const a = { id: uid(), name: "Neuer Bereich", color: PALETTE.find((c) => !used.has(c)) || PALETTE[S.areas.length % PALETTE.length], purpose: "" };
+  change(() => S.areas.push(a));
+  select({ t: "area", id: a.id }, true);
+}
+function addRole(aid, pid, pt) {
+  const p = pid && person(pid);
+  if (!aid) aid = (p && rolesOf(pid)[0]?.area) || (sel && sel.t === "area" && sel.id) || (sel && sel.t === "role" && role(sel.id)?.area) || S.areas[0].id;
+  const r = { id: uid(), area: aid, name: "Neue Rolle", purpose: "", acc: [], people: pid ? [pid] : [] };
+  seedAt("r|" + r.id, pt);
+  change(() => S.roles.push(r));
+  select({ t: "role", id: r.id }, true);
+}
+function addPerson(pt) {
+  const p = { id: uid(), name: "Neue Person" };
+  seedAt("p|" + p.id, pt);
+  change(() => S.people.push(p));
+  select({ t: "person", id: p.id }, true);
+}
+function removeSel() {
+  if (!sel) return;
+  const s = sel;
+  change(() => {
+    if (s.t === "role") S.roles = S.roles.filter((r) => r.id !== s.id);
+    if (s.t === "person") { S.people = S.people.filter((p) => p.id !== s.id); }
+    if (s.t === "area") {
+      const rest = S.areas.filter((a) => a.id !== s.id);
+      if (!rest.length) return;
+      for (const r of S.roles) if (r.area === s.id) r.area = rest[0].id;
+      S.areas = rest;
+    }
+  });
+  select(null);
+}
+
+// ---------- Auswahl und Detail ----------
+function select(s, focusName) {
+  sel = s;
+  const was = $("#panel").classList.contains("open");
+  renderPanel();
+  if (lens !== "netz") relayout({ dur: 300 }); // Beziehungen der gewählten Rolle ein-/ausblenden
+  else paint(), render();
+  if (s) {
+    const k = (s.t === "role" ? "r|" : s.t === "area" ? "a|" : "p|") + s.id;
+    const kk = s.t === "person" && lens !== "menschen" ? `c|${rolesOf(s.id)[0]?.id}|${s.id}` : k;
+    setTimeout(() => focusOn(kk), was ? 0 : 60);
+  }
+  if (focusName) setTimeout(() => { const n = $("#panel .name"); if (n) { n.focus(); n.select(); } }, 80);
+}
+
+let editPrev = null;
+const panel = $("#panel");
+panel.addEventListener("focusin", (e) => { if (e.target.matches("input,textarea")) editPrev = snap(); });
+panel.addEventListener("focusout", (e) => {
+  if (e.target.matches("input,textarea") && editPrev && editPrev !== snap()) { undoStack.push(editPrev); redoStack.length = 0; }
+  editPrev = null;
+});
+let liveT = null;
+panel.addEventListener("input", (e) => {
+  const f = e.target.dataset.f; if (!f || !sel) return;
+  const o = sel.t === "role" ? role(sel.id) : sel.t === "area" ? area(sel.id) : person(sel.id);
+  if (!o) return;
+  if (f === "acc") { o.acc[+e.target.dataset.i] = e.target.value; }
+  else o[f] = e.target.value;
+  save();
+  paint(); render();
+  clearTimeout(liveT);
+  liveT = setTimeout(() => { updateGaps(); if (query) runSearch(false); }, 250);
+});
+panel.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.dataset.f === "acc") {
+    e.preventDefault();
+    const i = +e.target.dataset.i;
+    change(() => role(sel.id).acc.splice(i + 1, 0, ""));
+    setTimeout(() => panel.querySelector(`[data-f="acc"][data-i="${i + 1}"]`)?.focus(), 0);
+  }
+  if (e.key === "Enter" && e.target.classList.contains("name")) { e.preventDefault(); e.target.blur(); }
+  if (e.key === "Escape") e.target.blur();
+});
+panel.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.f === "area" && sel?.t === "role") change(() => { role(sel.id).area = t.value; });
+  if (t.id === "relTarget" && t.value) {
+    const kind = $("#relKind").value, r = role(sel.id);
+    const [dir, oid] = [kind.startsWith("in:") ? "in" : "out", t.value];
+    const k = kind.replace("in:", "");
+    change(() => S.links.push({ id: uid(), from: dir === "in" ? oid : r.id, to: dir === "in" ? r.id : oid, kind: k }));
+  }
+  if (t.dataset.lk) change(() => { const l = S.links.find((x) => x.id === t.dataset.lk); if (l) l.kind = t.value; });
+  if (t.matches("input,textarea")) afterChange({ dur: 400 }); // Größe der Rolle hängt an der Zahl der Aufgaben
+});
+panel.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.close !== undefined) return select(null);
+  if (d.go) { const [t, id] = d.go.split(":"); return select({ t, id }); }
+  if (d.toggle && sel?.t === "role") return change(() => { const r = role(sel.id); r.people = r.people.includes(d.toggle) ? r.people.filter((x) => x !== d.toggle) : [...r.people, d.toggle]; });
+  if (d.toggleRole && sel?.t === "person") return change(() => { const r = role(d.toggleRole); r.people = r.people.includes(sel.id) ? r.people.filter((x) => x !== sel.id) : [...r.people, sel.id]; });
+  if (d.accdel !== undefined) return change(() => role(sel.id).acc.splice(+d.accdel, 1));
+  if (d.accadd !== undefined) { const r = role(sel.id); change(() => r.acc.push("")); return setTimeout(() => panel.querySelector(`[data-f="acc"][data-i="${r.acc.length - 1}"]`)?.focus(), 0); }
+  if (d.reldel) return change(() => { S.links = S.links.filter((l) => l.id !== d.reldel); });
+  if (d.color) return change(() => { area(sel.id).color = d.color; });
+  if (d.newperson !== undefined) { const p = { id: uid(), name: "Neue Person" }; change(() => { S.people.push(p); role(sel.id).people.push(p.id); }); return select({ t: "person", id: p.id }, true); }
+  if (d.newrole !== undefined) return addRole(sel.t === "area" ? sel.id : null, sel.t === "person" ? sel.id : null);
+  if (d.remove !== undefined) return removeSel();
+});
+
+function dupMap() {
+  const m = new Map();
+  for (const r of S.roles) for (const a of r.acc) { const k = norm(a).trim(); if (!k) continue; if (!m.has(k)) m.set(k, new Set()); m.get(k).add(r.id); }
+  return m;
+}
+function renderPanel() {
+  if (!sel) { panel.classList.remove("open"); panel.innerHTML = ""; return; }
+  panel.classList.add("open");
+  const active = document.activeElement && panel.contains(document.activeElement) ? document.activeElement : null;
+  const keep = active && { f: active.dataset.f, i: active.dataset.i, s: active.selectionStart, e: active.selectionEnd, cls: active.className };
+  let h = "";
+  if (sel.t === "role") {
+    const r = role(sel.id), a = area(r.area), dups = dupMap();
+    h += `<div class="kind"><span>Rolle</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(r.name)}" aria-label="Name der Rolle" />
+      <div class="crumb">im Bereich <button data-go="area:${a.id}">${esc(a.name)}</button></div>
+      <section><label class="h">Zweck</label><textarea data-f="purpose" rows="2" placeholder="Wozu gibt es diese Rolle?">${esc(r.purpose)}</textarea></section>
+      <section><label class="h">Verantwortet</label><div class="accs">`;
+    r.acc.forEach((x, i) => {
+      const others = [...(dups.get(norm(x).trim()) || [])].filter((id) => id !== r.id);
+      h += `<div class="acc ${others.length ? "dup" : ""}"><input class="t" data-f="acc" data-i="${i}" value="${esc(x)}" placeholder="Aufgabe" /><button class="del" data-accdel="${i}" aria-label="Entfernen">×</button></div>`;
+      if (others.length) h += `<p class="note">Auch bei ${others.map((id) => `<button class="mini" data-go="role:${id}">${esc(role(id).name)}</button>`).join(" ")}. Wer entscheidet?</p>`;
+    });
+    h += `</div><p style="margin:8px 0 0"><button class="mini" data-accadd>+ Aufgabe</button></p></section>
+      <section><label class="h">Besetzt von</label>`;
+    if (!r.people.length) h += `<p class="note" style="margin:0 0 8px">Niemand trägt diese Rolle.</p>`;
+    h += `<div class="chips">${S.people.map((p) => `<button class="chip" data-toggle="${p.id}" aria-pressed="${r.people.includes(p.id)}">${esc(p.name)}</button>`).join("")}<button class="chip" data-newperson>+ Person</button></div></section>
+      <section><label class="h">Beziehungen</label>`;
+    const rel = S.links.filter((l) => l.from === r.id || l.to === r.id);
+    if (!rel.length) h += `<p style="margin:0 0 4px;color:var(--ink-dim);font-size:12.5px">Noch keine. Im Netz eine Rolle auf eine andere ziehen oder hier wählen.</p>`;
+    for (const l of rel) {
+      const out = l.from === r.id, o = role(out ? l.to : l.from);
+      const opts = Object.entries(KINDS).map(([k, K]) => `<option value="${k}" ${k === l.kind ? "selected" : ""}>${out ? K.label : inverse(k)}</option>`).join("");
+      h += `<div class="rel"><select class="k" data-lk="${l.id}" style="width:auto;padding:3px 6px;font-size:11.5px">${opts}</select><button class="go" data-go="role:${o.id}">${esc(o.name)}</button><button class="del" data-reldel="${l.id}" aria-label="Entfernen">×</button></div>`;
+    }
+    const others = S.roles.filter((o) => o.id !== r.id);
+    h += `<div class="addrel"><select id="relKind">${Object.entries(KINDS).map(([k, K]) => `<option value="${k}">${K.label}</option>`).join("")}<option value="in:liefert">bekommt von</option></select>
+      <select id="relTarget"><option value="">Rolle wählen …</option>${S.areas.map((a2) => `<optgroup label="${esc(a2.name)}">${others.filter((o) => o.area === a2.id).map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</optgroup>`).join("")}</select></div></section>
+      <section><label class="h">Bereich</label><select data-f="area">${S.areas.map((a2) => `<option value="${a2.id}" ${a2.id === r.area ? "selected" : ""}>${esc(a2.name)}</option>`).join("")}</select></section>
+      <button class="danger" data-remove>Rolle löschen</button>`;
+  } else if (sel.t === "area") {
+    const a = area(sel.id), rs = S.roles.filter((r) => r.area === a.id);
+    const ppl = new Set(rs.flatMap((r) => r.people));
+    h += `<div class="kind"><span>Bereich</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(a.name)}" aria-label="Name des Bereichs" />
+      <div class="crumb">${rs.length} ${rs.length === 1 ? "Rolle" : "Rollen"} · ${ppl.size} ${ppl.size === 1 ? "Person" : "Personen"}</div>
+      <section><label class="h">Zweck</label><textarea data-f="purpose" rows="2" placeholder="Wofür ist dieser Bereich da?">${esc(a.purpose)}</textarea></section>
+      <section><label class="h">Farbe</label><div class="swatches">${PALETTE.map((c) => `<button class="sw" data-color="${c}" style="background:${c}" aria-pressed="${c === a.color}" aria-label="Farbe"></button>`).join("")}</div></section>
+      <section><label class="h">Rollen</label><div class="chips">${rs.map((r) => `<button class="chip" data-go="role:${r.id}">${esc(r.name)}${r.people.length ? "" : ' <span style="color:var(--warn)">●</span>'}</button>`).join("")}<button class="chip" data-newrole>+ Rolle</button></div></section>
+      ${S.areas.length > 1 ? `<button class="danger" data-remove>Bereich löschen${rs.length ? " (Rollen wandern in den ersten Bereich)" : ""}</button>` : ""}`;
+  } else {
+    const p = person(sel.id), rs = rolesOf(p.id), heavy = rs.length >= HEAVY;
+    h += `<div class="kind"><span>Person</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(p.name)}" aria-label="Name" />
+      <div class="crumb">${rs.length} ${rs.length === 1 ? "Rolle" : "Rollen"} in ${new Set(rs.map((r) => r.area)).size} Bereichen</div>
+      <div class="load ${heavy ? "heavy" : ""}"><i style="width:${Math.min(100, (rs.length / (HEAVY + 1)) * 100)}%"></i></div>
+      ${heavy ? `<p class="note">Trägt viele Rollen. Fällt ${esc(p.name.split(" ")[0])} aus, fehlt an ${rs.length} Stellen jemand.</p>` : ""}
+      ${rs.length ? "" : `<p class="note">Hat noch keine Rolle.</p>`}
+      <section><label class="h">Rollen</label>`;
+    for (const a of S.areas) {
+      const ar = S.roles.filter((r) => r.area === a.id);
+      if (!ar.length) continue;
+      h += `<div style="font-size:12px;color:var(--ink-dim);margin:8px 0 5px">${esc(a.name)}</div><div class="chips">${ar.map((r) => `<button class="chip" data-toggle-role="${r.id}" aria-pressed="${r.people.includes(p.id)}"><span class="dot" style="background:${a.color}"></span>${esc(r.name)}</button>`).join("")}</div>`;
+    }
+    h += `<p style="margin:10px 0 0"><button class="mini" data-newrole>+ Neue Rolle für ${esc(p.name.split(" ")[0])}</button></p></section>
+      <section><label class="h">Verantwortet insgesamt</label><div style="font-size:13px;line-height:1.55">${rs.flatMap((r) => r.acc.filter(Boolean).map((x) => `${esc(x)} <span style="color:var(--ink-dim)">· ${esc(r.name)}</span>`)).join("<br>") || '<span style="color:var(--ink-dim)">Noch nichts</span>'}</div></section>
+      <button class="danger" data-remove>Person entfernen</button>`;
+  }
+  panel.innerHTML = h;
+  if (keep && keep.f) {
+    const el = panel.querySelector(`[data-f="${keep.f}"]${keep.i !== undefined ? `[data-i="${keep.i}"]` : ""}`);
+    if (el) { el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch (e) {} }
+  }
+}
+function inverse(k) { return { liefert: "bekommt von", zusammen: "arbeitet mit", unterstuetzt: "wird unterstützt von" }[k]; }
+
+// ---------- Suche: Wer ist zuständig? ----------
+const qEl = $("#q"), resEl = $("#results");
+let results = [], activeRes = 0;
+function runSearch(open = true) {
+  query = qEl.value.trim();
+  if (!query) { focusSet = null; results = []; resEl.classList.remove("open"); paint(); return; }
+  const toks = norm(query).split(/\s+/).filter((t) => t.length > 1 || query.length === 1);
+  const out = [];
+  for (const r of S.roles) {
+    const a = area(r.area), ppl = r.people.map(person);
+    const hay = [r.name, r.purpose, a.name, ...r.acc, ...ppl.map((p) => p.name)].map(norm).join(" · ");
+    if (!toks.every((t) => hay.includes(t))) continue;
+    let score = 0;
+    const accHit = r.acc.filter((x) => toks.some((t) => norm(x).includes(t)));
+    if (toks.some((t) => norm(r.name).includes(t))) score += 3;
+    score += accHit.length * 2;
+    out.push({ t: "role", r, a, ppl, accHit, score });
+  }
+  for (const p of S.people) if (toks.every((t) => norm(p.name).includes(t))) out.push({ t: "person", p, score: 4 });
+  out.sort((x, y) => y.score - x.score);
+  results = out.slice(0, 8);
+  activeRes = 0;
+  focusSet = new Set();
+  for (const x of results) {
+    if (x.t === "role") { focusSet.add("r|" + x.r.id); focusSet.add("h|" + x.r.id); focusSet.add("a|" + x.a.id); x.ppl.forEach((p) => { focusSet.add("p|" + p.id); focusSet.add(`c|${x.r.id}|${p.id}`); }); }
+    else { focusSet.add("p|" + x.p.id); for (const r of rolesOf(x.p.id)) { focusSet.add("r|" + r.id); focusSet.add("h|" + r.id); focusSet.add("a|" + r.area); focusSet.add(`c|${r.id}|${x.p.id}`); } }
+  }
+  paint(); render();
+  const hl = (s) => { let h = esc(s); for (const t of toks) { const i = norm(s).indexOf(t); if (i >= 0) { h = esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, i + t.length)) + "</mark>" + esc(s.slice(i + t.length)); break; } } return h; };
+  resEl.innerHTML = results.length ? results.map((x, i) => x.t === "role"
+    ? `<button class="res ${i === 0 ? "active" : ""}" data-i="${i}"><span class="path">${esc(x.a.name)}</span><b>${hl(x.r.name)}</b>${x.accHit.slice(0, 2).map((a) => `<span class="acc">${hl(a)}</span>`).join("")}<span class="who">${x.ppl.length ? "→ " + x.ppl.map((p) => esc(p.name)).join(", ") : '<span class="none">→ niemand zuständig</span>'}</span></button>`
+    : `<button class="res ${i === 0 ? "active" : ""}" data-i="${i}"><span class="path">Person</span><b>${hl(x.p.name)}</b><span class="who">${rolesOf(x.p.id).map((r) => esc(r.name)).join(", ") || "keine Rolle"}</span></button>`).join("")
+    : `<div class="res-empty">Dafür ist noch niemand zuständig. Das ist eine Lücke.</div>`;
+  if (open) resEl.classList.add("open");
+}
+function pickResult(i) {
+  const x = results[i]; if (!x) return;
+  resEl.classList.remove("open");
+  select(x.t === "role" ? { t: "role", id: x.r.id } : { t: "person", id: x.p.id });
+}
+qEl.addEventListener("input", () => runSearch(true));
+qEl.addEventListener("focus", () => { if (query) resEl.classList.add("open"); });
+qEl.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); if (!results.length) return;
+    activeRes = (activeRes + (e.key === "ArrowDown" ? 1 : -1) + results.length) % results.length;
+    resEl.querySelectorAll(".res").forEach((b, i) => b.classList.toggle("active", i === activeRes));
+  } else if (e.key === "Enter") pickResult(activeRes);
+  else if (e.key === "Escape") { qEl.value = ""; runSearch(); qEl.blur(); }
+});
+resEl.addEventListener("click", (e) => { const b = e.target.closest(".res"); if (b) pickResult(+b.dataset.i); });
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest(".search")) resEl.classList.remove("open");
+  for (const [btn, pop] of [["#gapsBtn", "#gapsPop"], ["#addBtn", "#addPop"], ["#menuBtn", "#menuPop"]])
+    if (!e.target.closest(btn) && !e.target.closest(pop)) $(pop).classList.remove("open");
+});
+
+// ---------- Lücken ----------
+function gapList() {
+  const free = S.roles.filter((r) => !r.people.length);
+  const heavy = S.people.filter((p) => rolesOf(p.id).length >= HEAVY);
+  const idle = S.people.filter((p) => !rolesOf(p.id).length);
+  const dup = [...dupMap()].filter(([, s]) => s.size > 1);
+  return { free, heavy, idle, dup };
+}
+function updateGaps() {
+  const g = gapList(), n = g.free.length + g.heavy.length + g.idle.length + g.dup.length;
+  $("#gapCount").textContent = n;
+  $("#gapCount").style.display = n ? "" : "none";
+  $("#gapsBtn").setAttribute("aria-pressed", gapsOn);
+  const pop = $("#gapsPop");
+  const item = (go, label) => `<button class="item" data-go="${go}">${label}</button>`;
+  let h = `<button class="item" data-gaps-toggle style="font-weight:600">${gapsOn ? "Markierung ausblenden" : "Auf der Karte markieren"}</button>`;
+  if (g.free.length) h += `<h4>Rollen ohne Person</h4>` + g.free.map((r) => item("role:" + r.id, `${esc(r.name)} <span style="color:var(--ink-dim)">· ${esc(area(r.area).name)}</span>`)).join("");
+  if (g.dup.length) h += `<h4>Doppelt verantwortet</h4>` + g.dup.map(([key, s]) => { const rs = [...s].map(role); const a = rs[0].acc.find((x) => norm(x).trim() === key); return item("role:" + rs[0].id, `${esc(a)} <span style="color:var(--ink-dim)">· ${rs.map((r) => esc(r.name)).join(" und ")}</span>`); }).join("");
+  if (g.heavy.length) h += `<h4>Viele Rollen auf einer Person</h4>` + g.heavy.map((p) => item("person:" + p.id, `${esc(p.name)} <span style="color:var(--ink-dim)">· ${rolesOf(p.id).length} Rollen</span>`)).join("");
+  if (g.idle.length) h += `<h4>Ohne Rolle</h4>` + g.idle.map((p) => item("person:" + p.id, esc(p.name))).join("");
+  if (!n) h += `<div class="ok">Keine Lücken gefunden. Jede Rolle ist besetzt.</div>`;
+  pop.innerHTML = h;
+}
+$("#gapsBtn").addEventListener("click", () => { $("#gapsPop").classList.toggle("open"); });
+$("#gapsPop").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.gapsToggle !== undefined) { gapsOn = !gapsOn; writeLS("gefuege.gaps", gapsOn ? "1" : "0"); updateGaps(); paint(); render(); return; }
+  if (b.dataset.go) { const [t, id] = b.dataset.go.split(":"); if (!gapsOn) { gapsOn = true; updateGaps(); paint(); } select({ t, id }); }
+});
+
+// ---------- Linsen, Menü, Tastatur ----------
+function setLens(l, fitView = true) {
+  lens = l; writeLS("gefuege.lens", l);
+  document.querySelectorAll(".lenses button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lens === l));
+  idleHint();
+  relayout({ fit: fitView, dur: 900 });
+}
+document.querySelectorAll(".lenses button").forEach((b) => b.addEventListener("click", () => setLens(b.dataset.lens)));
+$("#addBtn").addEventListener("click", () => $("#addPop").classList.toggle("open"));
+$("#addPop").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-add]"); if (!b) return;
+  $("#addPop").classList.remove("open");
+  ({ area: () => addArea(), role: () => addRole(), person: () => addPerson() })[b.dataset.add]();
+});
+$("#menuBtn").addEventListener("click", () => $("#menuPop").classList.toggle("open"));
+$("#menuPop").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-m]"); if (!b) return;
+  const m = b.dataset.m;
+  $("#menuPop").classList.remove("open");
+  if (m === "fit") fit();
+  if (m === "export") {
+    const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "gefuege.json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  if (m === "import") $("#file").click();
+  if (m === "example" && confirm("Beispiel-Firma laden? Der aktuelle Stand lässt sich mit Rückgängig zurückholen.")) { change(() => { S = example(); }); seeds.menschen.clear(); seeds.netz.clear(); select(null); relayout({ fit: true }); }
+  if (m === "clear" && confirm("Mit einem leeren Gefüge beginnen? Rückgängig holt den Stand zurück.")) { change(() => { S = emptyModel(); }); select(null); relayout({ fit: true }); }
+});
+$("#file").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.areas) || !Array.isArray(d.roles)) throw new Error();
+    change(() => { S = { areas: d.areas, roles: d.roles, people: d.people || [], links: d.links || [] }; });
+    select(null); relayout({ fit: true });
+  } catch (err) { alert("Diese Datei kann ich nicht lesen."); }
+  e.target.value = "";
+});
+$("#themeBtn").addEventListener("click", () => {
+  const dark = TC.dark;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  writeLS("gefuege.theme", dark ? "light" : "dark");
+  readTheme(); paint(); render();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readTheme(); paint(); render(); });
+$("#undoBtn").addEventListener("click", doUndo);
+$("#redoBtn").addEventListener("click", doRedo);
+document.addEventListener("keydown", (e) => {
+  const typing = e.target.matches && e.target.matches("input,textarea,select");
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === "z" && !typing) { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
+  if (mod && e.key.toLowerCase() === "y" && !typing) { e.preventDefault(); doRedo(); return; }
+  if (typing) return;
+  if (e.key === "/") { e.preventDefault(); qEl.focus(); }
+  else if (e.key === "1" || e.key === "2" || e.key === "3") setLens(["kreise", "menschen", "netz"][+e.key - 1]);
+  else if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); removeSel(); }
+  else if (e.key === "Escape") { if (query) { qEl.value = ""; runSearch(); } else select(null); }
+});
+
+// ---------- Start ----------
+const th = readLS("gefuege.theme");
+if (th === "light" || th === "dark") document.documentElement.setAttribute("data-theme", th);
+readTheme();
+document.querySelectorAll(".lenses button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lens === lens));
+clean();
+save();
+updateGaps();
+idleHint();
+relayout({ instant: true, fit: true });
+document.fonts && document.fonts.ready.then(() => { for (const e of els.values()) e._key = null; render(); });
+</script>
+</body>
+</html>
