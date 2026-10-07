@@ -519,7 +519,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     <button type="button" id="btn-child" disabled>Unterbubble</button>
     <button type="button" id="btn-add" aria-pressed="false" title="Beim Loslassen in die Ziel-Bubble einordnen (wie Shift)">Einordnen</button>
     <button type="button" id="btn-remove" aria-pressed="false" title="Beim Loslassen aus der Bubble lösen, die man verlassen hat (wie Strg)">Herauslösen</button>
-    <button type="button" id="btn-group" disabled title="Alle Bubbles wählen, die an der gewählten angedockt sind, um sie zusammen zu verschieben">Gruppe</button>
     <button type="button" id="btn-del" disabled>Löschen</button>
     <span class="sep" aria-hidden="true"></span>
     <button type="button" id="btn-undo" disabled>Rückgängig</button>
@@ -557,7 +556,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     add: $("btn-add"),
     remove: $("btn-remove"),
     del: $("btn-del"),
-    group: $("btn-group"),
     undo: $("btn-undo"),
     redo: $("btn-redo"),
     fit: $("btn-fit"),
@@ -614,6 +612,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     ["goo", "Verschmelzen", 2, 40, 0.5],
     ["threshold", "Tropfenfülle (links = voller)", 0.12, 0.85, 0.01],
     ["sharp", "Kantenschärfe", 4, 120, 1],
+    ["bridge", "Breite der Verbindung", 0.2, 4, 0.05],
     ["dots", "Punktraster im Hintergrund"],
     ["Kontur", false],
     ["outline", "Kontur zeigen"],
@@ -623,6 +622,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     ["attract", "Anziehung nach innen", 0, 0.03, 0.001],
     ["repel", "Abstoßung", 0.01, 0.5, 0.01],
     ["gap", "Abstand zwischen Bubbles", 0.3, 5, 0.05],
+    ["link", "Zug bei Verbindungen", 0, 0.03, 0.001],
+    ["linkGap", "Abstand verbundener Bubbles", 0, 5, 0.05],
     ["friction", "Gleiten", 0.4, 0.97, 0.01],
     ["throw", "Schwung beim Loslassen", 0, 1.5, 0.05],
   ];
@@ -716,7 +717,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   let themeDark = false;
 
   const IDLE_HINT =
-    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben, berühren dockt an · mit Shift: einordnen · mit Strg: herauslösen<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · Entf: löschen</span>';
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · mit Shift: einordnen · mit Strg: herauslösen<span class="long"> · Shift-Klick: mehrere auswählen · Entf: löschen · Mittlere Maustaste: Ansicht verschieben</span>';
 
   let bubbles = new Map();
   let view = { x: 0, y: 0, k: 1 };
@@ -836,46 +837,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     return "b" + Date.now().toString(36) + (seq++).toString(36);
   }
 
-  // Docking: bubbles on the same level that were pushed together stay merged.
-  // k = wanted distance as a share of the two radii (below 1 = overlapping)
-  const sameLevel = (a, b) => (a.parents[0] || null) === (b.parents[0] || null);
-  function dockPair(a, b, k) {
-    a.docks[b.id] = k;
-    b.docks[a.id] = k;
-  }
-  function undockAll(b) {
-    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
-    b.docks = {};
-  }
-  // The touching neighbours a bubble would dock to if let go here
-  function dockTargets(b, skip) {
-    const out = [];
-    for (const o of bubbles.values()) {
-      if (o === b || (skip && skip.has(o)) || !sameLevel(b, o)) continue;
-      const reach = b.r + o.r + Math.max(6, sig(depthOf.get(b.id) || 0) * 0.5);
-      const dist = Math.hypot(o.x - b.x, o.y - b.y);
-      if (dist < reach) out.push({ o, k: Math.max(0.7, Math.min(1, dist / (b.r + o.r))) });
-    }
-    return out;
-  }
-  // Everything docked to b, directly or through others
-  function dockGroup(b) {
-    const out = new Set([b]);
-    const stack = [b];
-    while (stack.length) {
-      const x = stack.pop();
-      for (const id in x.docks) {
-        const o = bubbles.get(id);
-        if (o && !out.has(o)) {
-          out.add(o);
-          stack.push(o);
-        }
-      }
-    }
-    return out;
-  }
   function make(text, x, y, parents = [], color = null) {
-    const b = { id: uid(), text, x, y, parents: [...parents], color, docks: {}, r: 0, vx: 0, vy: 0 };
+    const b = { id: uid(), text, x, y, parents: [...parents], color, r: 0, vx: 0, vy: 0 };
     bubbles.set(b.id, b);
     topo();
     b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
@@ -887,7 +850,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       c.parents = c.parents.filter((p) => p !== b.id);
       if (!c.parents.length) c.parents = [...b.parents];
     }
-    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
     bubbles.delete(b.id);
     sel.delete(b);
     if (selected === b) selected = [...sel].pop() || null;
@@ -1005,22 +967,59 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       b._linked = null;
     }
 
-    // Docked bubbles: a spring holds each pair at the distance they were docked at
-    for (const a of all) {
-      for (const id in a.docks) {
-        if (id < a.id) continue;
-        const c = bubbles.get(id);
-        if (!c) continue;
-        (a._linked ||= new Set()).add(c);
-        (c._linked ||= new Set()).add(a);
-        if (isPinned(a) || isPinned(c)) continue;
-        const dx = c.x - a.x;
-        const dy = c.y - a.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const want = a.docks[id] * (a.r + c.r);
-        const f = Math.max(-6, Math.min(6, (dist - want) * 0.06));
-        force(a, (dx / dist) * f, (dy / dist) * f);
-        force(c, (-dx / dist) * f, (-dy / dist) * f);
+    // Bubbles sharing a bubble: pull their carriers together, park the shared one between
+    const groups = new Map();
+    for (const c of all) {
+      if (c.parents.length < 2) continue;
+      const key = [...c.parents].sort().join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    for (const list of groups.values()) {
+      const ps = list[0].parents.map((id) => bubbles.get(id)).filter(Boolean);
+      if (ps.length < 2) continue;
+      const maxR = Math.max(...list.map((c) => c.r));
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          const a = ps[i];
+          const c = ps[j];
+          const A = anchor(a);
+          const C = anchor(c);
+          if (A === C) continue;
+          (A._linked ||= new Set()).add(C);
+          (C._linked ||= new Set()).add(A);
+          const dx = c.x - a.x;
+          const dy = c.y - a.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const want = a.r + c.r + maxR * T.linkGap;
+          const f = Math.max(-4, Math.min(4, (dist - want) * T.link));
+          force(A, (dx / dist) * f, (dy / dist) * f);
+          force(C, (-dx / dist) * f, (-dy / dist) * f);
+        }
+      }
+      let mx = 0;
+      let my = 0;
+      for (const p of ps) {
+        let ox = 0;
+        let oy = 0;
+        for (const q of ps) if (q !== p) { ox += q.x; oy += q.y; }
+        ox /= ps.length - 1;
+        oy /= ps.length - 1;
+        const dist = Math.hypot(ox - p.x, oy - p.y) || 1;
+        mx += p.x + ((ox - p.x) / dist) * p.r;
+        my += p.y + ((oy - p.y) / dist) * p.r;
+      }
+      mx /= ps.length;
+      my /= ps.length;
+      const al = Math.hypot(ps[1].x - ps[0].x, ps[1].y - ps[0].y) || 1;
+      const px = -(ps[1].y - ps[0].y) / al;
+      const py = (ps[1].x - ps[0].x) / al;
+      const spread = list.reduce((s, c) => s + 2 * c.r + 12, 0);
+      let along = -spread / 2;
+      for (const c of list) {
+        const o = list.length > 1 ? along + c.r + 6 : 0;
+        along += 2 * c.r + 12;
+        force(c, (mx + px * o - c.x - c.vx * 4) * 0.05, (my + py * o - c.y - c.vy * 4) * 0.05);
       }
     }
 
@@ -1424,7 +1423,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   function updateChrome() {
     btn.child.disabled = !selected;
     btn.del.disabled = !selected;
-    btn.group.disabled = !selected || !Object.keys(selected.docks).length;
     btn.undo.disabled = !undoStack.length;
     btn.redo.disabled = !redoStack.length;
     btn.add.setAttribute("aria-pressed", String(toolMode === "add"));
@@ -1467,7 +1465,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       bubbles: [...bubbles.values()].map((b) => {
         const o = { id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents };
         if (b.color) o.color = b.color;
-        if (Object.keys(b.docks).length) o.docks = b.docks;
         return o;
       }),
     };
@@ -1500,7 +1497,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         y: Number(o.y) || 0,
         parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
         color: HEX.test(o.color || "") ? o.color : null,
-        docks: o.docks && typeof o.docks === "object" ? { ...o.docks } : {},
         r: keep && old.get(id) ? old.get(id).r : 0,
         vx: 0,
         vy: 0,
@@ -1509,22 +1505,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     for (const b of bubbles.values()) b.parents = b.parents.filter((p) => p !== b.id && bubbles.has(p));
     // Break any cycle a hand-edited file might carry
     for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)));
-    // Earlier a bubble could belong to several; now it lives in one, and the
-    // bubbles it joined stay docked to each other
-    for (const b of bubbles.values()) {
-      if (b.parents.length < 2) continue;
-      const [first, ...rest] = b.parents.map((id) => bubbles.get(id));
-      b.parents = [first.id];
-      for (const o of rest) if (sameLevel(first, o)) dockPair(first, o, 0.85);
-    }
-    for (const b of bubbles.values()) {
-      for (const id in b.docks) {
-        const o = bubbles.get(id);
-        const k = Number(b.docks[id]);
-        if (!o || o === b || !sameLevel(b, o) || !(k > 0.2 && k <= 1.2)) delete b.docks[id];
-        else o.docks[b.id] = k;
-      }
-    }
     sel = new Set([...sel].map((b) => bubbles.get(b.id)).filter(Boolean));
     selected = (selected && bubbles.get(selected.id)) || [...sel].pop() || null;
     editing = null;
@@ -1557,8 +1537,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     make("Filz", m.x + 10, m.y + 10, [m.id]);
     make("Schaufenster", b.x - 20, b.y + 30, [b.id]);
     make("Lichtplanung", b.x + 30, b.y + 70, [b.id], "#e2d6f0");
-    make("Markenfarben", a.x + 60, a.y - 30, [a.id], "#d3e6cf");
-    dockPair(a, b, 0.88);
+    make("Markenfarben", 0, 40, [a.id, b.id], "#d3e6cf");
   }
 
   function fit() {
@@ -1715,6 +1694,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (mode === "add") {
       if (!t) return { kind: "keep", why: "none" };
       if (b.parents.includes(t.id)) return { kind: "keep", why: "already", t };
+      // Deeper inside a bubble it already belongs to: swap for the inner one
+      const outer = b.parents.find((pid) => isAncestor(bubbles.get(pid), t));
+      if (outer) return { kind: "deeper", t, outer };
+      if (b.parents.some((pid) => isAncestor(t, bubbles.get(pid)))) return { kind: "keep", why: "already", t };
       return { kind: "add", t };
     }
     if (mode === "remove") {
@@ -1735,14 +1718,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       }
       return { kind: "out", left, into };
     }
-    // Plain: dock to what it touches, let go of what it no longer touches
-    const skip = drag && drag.group ? new Set(drag.group) : null;
-    const now = dockTargets(b, skip);
-    const left = Object.keys(b.docks)
-      .map((id) => bubbles.get(id))
-      .filter((o) => o && !(skip && skip.has(o)) && !now.some((x) => x.o === o));
-    const fresh = now.filter((x) => !(x.o.id in b.docks));
-    return { kind: "dock", now, fresh, left };
+    return { kind: "keep", why: "plain" };
   }
 
   function dragHint() {
@@ -1751,35 +1727,29 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     const bn = esc(name(b));
     const tn = p.t ? esc(name(p.t)) : "";
     const list = (xs) => xs.map((x) => "»" + esc(name(x)) + "«").join(" und ");
-    if (p.kind === "add") hint(`Loslassen: »${bn}« in »${tn}« einordnen`, true);
-    else if (p.kind === "dock" && p.fresh.length) hint(`Loslassen: an ${list(p.fresh.map((x) => x.o))} andocken`, true);
-    else if (p.kind === "dock" && p.left.length) hint(`Loslassen: von ${list(p.left)} lösen`, true);
+    if (p.kind === "add") hint(b.parents.length ? `Loslassen: »${bn}« gehört zusätzlich zu »${tn}«` : `Loslassen: »${bn}« in »${tn}« einordnen`, true);
+    else if (p.kind === "deeper") hint(`Loslassen: »${bn}« in »${tn}« einordnen`, true);
     else if (p.kind === "out") hint(`Loslassen: »${bn}« aus ${list(p.left)} lösen` + (p.into ? ` und in »${esc(name(p.into))}« legen` : ""), true);
     else if (drag.mode === "add") hint(p.why === "already" ? `»${bn}« gehört schon zu »${tn}«` : "Über eine Bubble ziehen, in die sie gehören soll", true);
     else if (drag.mode === "remove") hint(p.why === "main" ? `»${bn}« ist schon eine eigene Bubble` : "Aus der Bubble herausziehen, von der sie gelöst werden soll", true);
-    else hint('Verschieben · berühren dockt an<span class="long"> · Shift: einordnen · Strg: herauslösen</span>', true);
+    else hint('Verschieben<span class="long"> · Shift: einordnen · Strg: herauslösen</span>', true);
   }
 
   function dropOne(b, at) {
     const p = dropPlan(b, drag.target, drag.mode, at);
     if (p.kind === "add") {
-      undockAll(b);
-      b.parents = [p.t.id];
+      b.parents.push(p.t.id);
+      return b.parents.length > 1 ? `»${name(b)}« verbindet jetzt »${b.parents.map((id) => name(bubbles.get(id))).join("« und »")}«` : `»${name(b)}« liegt jetzt in »${name(p.t)}«`;
+    }
+    if (p.kind === "deeper") {
+      b.parents = b.parents.map((id) => (id === p.outer ? p.t.id : id));
       return `»${name(b)}« liegt jetzt in »${name(p.t)}«`;
     }
     if (p.kind === "out") {
-      undockAll(b);
-      b.parents = p.into ? [p.into.id] : [];
+      const gone = new Set(p.left.map((x) => x.id));
+      b.parents = b.parents.filter((id) => !gone.has(id));
+      if (!b.parents.length && p.into) b.parents = [p.into.id];
       return `»${name(b)}« ist aus ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`;
-    }
-    if (p.kind === "dock") {
-      for (const o of p.left) {
-        delete b.docks[o.id];
-        delete o.docks[b.id];
-      }
-      for (const { o, k } of p.now) dockPair(b, o, k);
-      if (p.fresh.length) return `»${name(b)}« ist an ${p.fresh.map((x) => "»" + name(x.o) + "«").join(" und ")} angedockt`;
-      if (p.left.length) return `»${name(b)}« ist von ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`;
     }
     return "";
   }
@@ -1794,7 +1764,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       g.vy = drag.vy * T.throw;
     }
     if (msgs.length === 1) flash(msgs[0]);
-    else if (msgs.length > 1) flash(`${msgs.length} Bubbles neu angeordnet`);
+    else if (msgs.length > 1) flash(`${msgs.length} Bubbles neu zugeordnet`);
     topo();
     needsSave = true;
     dirty = true;
@@ -2059,13 +2029,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     select(null);
   }
   btn.del.addEventListener("click", deleteSelection);
-  btn.group.addEventListener("click", () => {
-    if (!selected) return;
-    sel = dockGroup(selected);
-    dirty = true;
-    updateChrome();
-    flash(`${sel.size} angedockte Bubbles gewählt: zusammen ziehen verschiebt sie gemeinsam`);
-  });
   btn.undo.addEventListener("click", undo);
   btn.redo.addEventListener("click", redo);
   btn.fit.addEventListener("click", fit);
@@ -2417,8 +2380,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const col = colorOf(b);
       if (col) dot.style.setProperty("--dot-c", col);
       const txt = mk("span", "txt", name(b));
-      const docked = Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean);
-      if (docked.length) txt.appendChild(mk("span", "also", "angedockt an " + docked.map(name).join(", ")));
+      if (b.parents.length > 1) {
+        const others = b.parents.filter((id) => id !== via).map((id) => name(bubbles.get(id)));
+        txt.appendChild(mk("span", "also", "auch in " + others.join(", ")));
+      }
       bt.append(dot, txt);
       li.appendChild(bt);
       return li;
@@ -2440,25 +2405,19 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (roots.length) treeEl.appendChild(branch(roots, []));
     else treeEl.appendChild(mk("p", "empty", "Noch keine Bubbles. Doppelklick auf die Fläche legt eine an."));
 
-    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble · mit Shift auf einen Punkt ziehen: dort andocken");
+    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble · Shift beim Ziehen: zusätzlich unter einen zweiten Punkt");
     rootDrop.dataset.root = "1";
     treeEl.appendChild(rootDrop);
 
-    treeEl.appendChild(mk("h3", "", "Angedockt"));
-    const seen = new Set();
-    const groups = [];
-    for (const b of [...bubbles.values()].sort(byPos)) {
-      if (seen.has(b) || !Object.keys(b.docks).length) continue;
-      const g = [...dockGroup(b)].sort(byPos);
-      for (const x of g) seen.add(x);
-      groups.push(g);
-    }
-    if (!groups.length) treeEl.appendChild(mk("p", "empty", "Nichts. Bubbles aneinander schieben und loslassen dockt sie an."));
+    treeEl.appendChild(mk("h3", "", "Verbindungen"));
+    const shared = [...bubbles.values()].filter((b) => b.parents.length > 1).sort(byPos);
+    if (!shared.length) treeEl.appendChild(mk("p", "empty", "Keine. Mit Shift in eine zweite Bubble ziehen verbindet zwei Bubbles."));
     else {
       const ul = mk("ul");
-      for (const g of groups) {
-        const li = mk("li", "dock-group");
-        li.appendChild(mk("span", "also", g.map(name).join(" · ")));
+      for (const b of shared) {
+        const li = node(b, null);
+        const t = li.querySelector(".also");
+        if (t) t.textContent = "verbindet " + b.parents.map((id) => name(bubbles.get(id))).join(" ↔ ");
         ul.appendChild(li);
       }
       treeEl.appendChild(ul);
@@ -2495,8 +2454,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (!treeDrag || !t) return false;
     if (t.dataset.root) return treeDrag.b.parents.length > 0;
     const target = bubbles.get(t.dataset.id);
-    if (!target || subtree(treeDrag.b).has(target)) return false;
-    return treeDrag.shift ? !(target.id in treeDrag.b.docks) : !treeDrag.b.parents.includes(target.id);
+    return !!target && !subtree(treeDrag.b).has(target) && !treeDrag.b.parents.includes(target.id);
   }
   function treeDragShow() {
     const d = treeDrag;
@@ -2504,7 +2462,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     const t = d.target;
     const ok = treeDropOk(t);
     for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) if (n !== t) n.classList.remove("drop-into", "drop-link");
-    const link = d.shift && ok && !t.dataset.root;
+    const link = d.shift && d.b.parents.length > 0 && ok && !t.dataset.root;
     if (t) {
       t.classList.toggle("drop-into", ok && !link);
       t.classList.toggle("drop-link", link);
@@ -2512,14 +2470,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     const target = ok && !t.dataset.root ? bubbles.get(t.dataset.id) : null;
     d.ghost.querySelector(".what").textContent = name(d.b);
     d.ghost.querySelector(".how").textContent = !ok
-      ? d.shift
-        ? "Auf einen Punkt ziehen, um dort anzudocken"
-        : "Auf einen Punkt ziehen · mit Shift: andocken"
+      ? d.b.parents.length
+        ? "Shift halten: zusätzlich unter einen weiteren Punkt"
+        : "Auf einen Punkt ziehen"
       : t.dataset.root
         ? "→ eigene Haupt-Bubble"
         : link
-          ? `⊕ an »${name(target)}« andocken`
-          : `→ in »${name(target)}« · mit Shift: andocken`;
+          ? `+ auch unter »${name(target)}« (bleibt unter »${name(bubbles.get(d.via) || bubbles.get(d.b.parents[0]))}«)`
+          : `→ nach »${name(target)}«${d.b.parents.length ? " · mit Shift: zusätzlich" : ""}`;
     d.ghost.classList.toggle("link", link);
   }
   treeEl.addEventListener("pointerdown", (e) => {
@@ -2582,7 +2540,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (t.dataset.root) {
       // Out of the bubble it was dragged from (or out of all), below its old place
       const from = bubbles.get(via) || bubbles.get(b.parents[0]);
-      undockAll(b);
       b.parents = via ? b.parents.filter((id) => id !== via) : [];
       if (b.parents.length) {
         flash(`»${name(b)}« ist aus »${name(from)}« gelöst`);
@@ -2593,22 +2550,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       }
     } else {
       const target = bubbles.get(t.dataset.id);
-      if (shift) {
-        // Dock next to the target, on its level
-        if (!sameLevel(b, target)) undockAll(b);
-        b.parents = [...target.parents];
-        topo();
-        const ang = Math.random() * Math.PI * 2;
-        const dist = (target.r + b.r) * 0.85;
-        moveTree(b, target.x + Math.cos(ang) * dist - b.x, target.y + Math.sin(ang) * dist - b.y);
-        dockPair(b, target, 0.85);
-        flash(`»${name(b)}« ist an »${name(target)}« angedockt`);
-      } else {
-        undockAll(b);
-        b.parents = [target.id];
-        moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
-        flash(`»${name(b)}« liegt jetzt in »${name(target)}«`);
-      }
+      if (shift && b.parents.length) b.parents.push(target.id);
+      else if (via && b.parents.includes(via)) b.parents = b.parents.map((id) => (id === via ? target.id : id));
+      else b.parents = [target.id];
+      if (b.parents.length === 1) moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
+      flash(b.parents.length > 1 ? `»${name(b)}« steht jetzt auch unter »${name(target)}« und verbindet beide` : `»${name(b)}« liegt jetzt in »${name(target)}«`);
     }
     topo();
     b.vx = 0;
