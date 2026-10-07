@@ -195,6 +195,8 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .pstar[aria-pressed="true"] { opacity: 1; color: var(--accent); font-weight: 700; }
 .pdel:hover { color: #d64545; }
 .presets .padd { color: var(--ink-dim); }
+.pexp { padding: 4px 8px 8px; font-size: 12px; color: var(--ink-dim); }
+.pexp textarea { display: block; width: 100%; margin-top: 6px; font: 10.5px/1.35 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px; resize: vertical; }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 8px 4px; }
 
 /* ---------- detail panel ---------- */
@@ -451,6 +453,7 @@ const nextPresetLabel = () => {
   const d = new Date(), z = (n) => String(n).padStart(2, "0");
   return `${z(d.getDate())}.${z(d.getMonth() + 1)}.${d.getFullYear()} | ${z(d.getHours())}.${z(d.getMinutes())}`;
 };
+let presetExport = null; // Export-Text unter „Gespeichert“, sobald man exportiert
 const defaultPreset = () => PRESETS.list[PRESETS.def] || { look: { ...DEFAULTS }, theme: DEFAULT_THEME };
 // das kurz eingeführte Farbset „VAVE“ wurde zurückgenommen: dort gespeicherte Einstellungen wieder auf Pastell
 for (const p of PRESETS.list) if (p.look && p.look.set === "vave") p.look.set = "pastell";
@@ -1973,7 +1976,9 @@ function renderSettings() {
   let h = `<h4>Gespeichert</h4><div class="presets">
     <button class="item pdef" data-preset-default title="Lädt den Eintrag mit Haken">Default <span>${PRESETS.list[PRESETS.def] ? esc(PRESETS.list[PRESETS.def].label) : "Werkseinstellung"}</span></button>
     ${PRESETS.list.map((p, i) => `<div class="prow" data-pi="${i}"><span class="pgrab" aria-hidden="true">⋮⋮</span><button class="item" data-preset-load="${i}" title="Klick lädt, nochmal klicken benennt um"><span class="pname">${esc(p.label)}</span><span class="psw">${(SETS[p.look.set] || SETS.frisch).c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span></button><button class="pren" data-preset-ren="${i}" title="Umbenennen" aria-label="${esc(p.label)} umbenennen">✎</button><button class="pstar" data-preset-def="${i}" aria-pressed="${i === PRESETS.def}" title="Als Default setzen" aria-label="${esc(p.label)} als Default setzen">✓</button><button class="pdel" data-preset-del="${i}" title="Löschen" aria-label="${esc(p.label)} löschen">×</button></div>`).join("")}
-    <button class="item padd" data-preset-save>+ Aktuelle Einstellungen speichern</button></div>`;
+    <button class="item padd" data-preset-save>+ Aktuelle Einstellungen speichern</button>
+    <button class="item padd" data-preset-export>↗ Alle exportieren (in die Zwischenablage)</button>
+    ${presetExport ? `<div class="pexp"><span>${esc(presetExport.msg)}</span><textarea readonly rows="4">${esc(presetExport.text)}</textarea></div>` : ""}</div>`;
   h += `<h4>Ansicht</h4>` + seg("theme", [["light", "Hell"], ["dark", "Dunkel"], ["system", "Wie System"]], theme);
   h += `<h4>Farbset</h4>` + seg("set", Object.entries(SETS).map(([k, v]) => [k, v.name, `<span class="sws">${v.c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span>`]), T.set);
   for (const [group, list] of SLIDERS) {
@@ -2082,6 +2087,13 @@ $("#settings").addEventListener("click", (e) => {
     if (e.detail === 2 || again) { presetPicked = null; return renamePreset(i); }
     presetPicked = PRESETS.list[i]; presetPickedAt = Date.now();
     return load(PRESETS.list[i]);
+  }
+  if (b.dataset.presetExport !== undefined) {
+    const text = JSON.stringify({ presets: PRESETS, theme: readLS("gefuege.theme") || "system" });
+    const show = (msg) => { presetExport = { text, msg }; renderSettings(); const ta = $("#settings .pexp textarea"); if (ta) { ta.focus(); ta.select(); } };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => show("Kopiert. Einfach in den Chat einfügen."), () => show("Bitte den markierten Text kopieren (Strg/Cmd+C)."));
+    else show("Bitte den markierten Text kopieren (Strg/Cmd+C).");
+    return;
   }
   if (b.dataset.presetSave !== undefined) { PRESETS.list.push({ look: { ...T }, theme: readLS("gefuege.theme") || "system", label: nextPresetLabel() }); savePresets(); return renderSettings(); }
   if (b.dataset.presetRen) return renamePreset(+b.dataset.presetRen);
