@@ -520,7 +520,7 @@ input.switch:checked::after { transform: translateX(16px); }
   <div class="tune-actions">
     <button type="button" id="tune-reset">Auf Standard zurücksetzen</button>
   </div>
-  <p class="version">Stand 07.10.2026, 13:15</p>
+  <p class="version">Stand 07.10.2026, 13:40</p>
 </aside>
 
 <div id="dock">
@@ -530,6 +530,7 @@ input.switch:checked::after { transform: translateX(16px); }
     <button type="button" id="btn-new">Neue Bubble</button>
     <button type="button" id="btn-child" disabled>Unterbubble</button>
     <button type="button" id="btn-group" disabled title="Alle Bubbles wählen, die an der gewählten angedockt sind, um sie zusammen zu verschieben">Gruppe</button>
+    <button type="button" id="btn-link" disabled title="Zwei mit Shift-Klick gewählte Bubbles verbinden, auch wenn sie in verschiedenen Bubbles liegen">Verbinden</button>
     <button type="button" id="btn-del" disabled>Löschen</button>
     <span class="sep" aria-hidden="true"></span>
     <button type="button" id="btn-undo" disabled>Rückgängig</button>
@@ -566,6 +567,7 @@ input.switch:checked::after { transform: translateX(16px); }
     child: $("btn-child"),
     del: $("btn-del"),
     group: $("btn-group"),
+    link: $("btn-link"),
     undo: $("btn-undo"),
     redo: $("btn-redo"),
     fit: $("btn-fit"),
@@ -600,6 +602,8 @@ input.switch:checked::after { transform: translateX(16px); }
     pull: 1, // how strongly bubbles are drawn into the middle of the bubble they sit in
     push: 1, // how firmly bubbles push each other away
     glide: 0.34, // how far a bubble glides when let go
+    linkW: 0.45, // width of connections between bubbles
+    linkPull: 1, // how strongly connected bubbles lean towards each other
     dots: true, // dotted background
   };
   // Values chosen by Matthias (07.10.2026) that stay fixed
@@ -648,6 +652,9 @@ input.switch:checked::after { transform: translateX(16px); }
     ["pull", "Anziehung zur Mitte", 0.2, 4, 0.05],
     ["push", "Abstoßung", 0.2, 3, 0.05],
     ["glide", "Gleiten nach dem Loslassen", 0, 1, 0.01],
+    ["Verbindungen"],
+    ["linkW", "Breite", 0.15, 1, 0.01],
+    ["linkPull", "Zug zueinander", 0, 4, 0.05],
     ["Hintergrund"],
     ["dots", "Punkte"],
   ];
@@ -712,7 +719,7 @@ input.switch:checked::after { transform: translateX(16px); }
   let themeDark = false;
 
   const IDLE_HINT =
-    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · berühren dockt an · in eine Bubble ziehen legt hinein, herausziehen holt heraus<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · Entf: löschen</span>';
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · berühren dockt an · in eine Bubble ziehen legt hinein, herausziehen holt heraus<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · zwei gewählt + Verbinden: über Grenzen hinweg verbinden · Entf: löschen</span>';
 
   let bubbles = new Map();
   let view = { x: 0, y: 0, k: 1 };
@@ -887,7 +894,7 @@ input.switch:checked::after { transform: translateX(16px); }
     return out;
   }
   function make(text, x, y, parents = [], color = null) {
-    const b = { id: uid(), text, x, y, parents: [...parents], color, docks: {}, r: 0, vx: 0, vy: 0 };
+    const b = { id: uid(), text, x, y, parents: [...parents], color, docks: {}, links: {}, r: 0, vx: 0, vy: 0 };
     bubbles.set(b.id, b);
     topo();
     b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
@@ -900,6 +907,7 @@ input.switch:checked::after { transform: translateX(16px); }
       if (!c.parents.length) c.parents = [...b.parents];
     }
     for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
+    for (const id in b.links) delete bubbles.get(id)?.links[b.id];
     bubbles.delete(b.id);
     sel.delete(b);
     if (selected === b) selected = [...sel].pop() || null;
@@ -1032,6 +1040,21 @@ input.switch:checked::after { transform: translateX(16px); }
         const dist = Math.hypot(dx, dy) || 1;
         const want = a.docks[id] * (p[2] + q[2]);
         const f = Math.max(-6, Math.min(6, (dist - want) * 0.06));
+        force(a, (dx / dist) * f, (dy / dist) * f);
+        force(c, (-dx / dist) * f, (-dy / dist) * f);
+      }
+    }
+
+    // Connected bubbles lean towards each other, gently, across their bubbles' walls
+    for (const a of all) {
+      for (const id in a.links) {
+        if (id < a.id) continue;
+        const c = bubbles.get(id);
+        if (!c || isPinned(a) || isPinned(c)) continue;
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const f = Math.min(2, Math.max(0, dist - a.r - c.r) * 0.0015 * T.linkPull);
         force(a, (dx / dist) * f, (dy / dist) * f);
         force(c, (-dx / dist) * f, (-dy / dist) * f);
       }
@@ -1319,6 +1342,11 @@ input.switch:checked::after { transform: translateX(16px); }
     return null;
   }
   const fillOf = (b) => colorOf(b) || `var(--d${dd(depthOf.get(b.id))})`;
+  // Blend two fills; theme colours (CSS variables) switch over halfway
+  function mixFill(a, b, u) {
+    if (!HEX.test(a) || !HEX.test(b)) return u < 0.5 ? a : b;
+    return "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.substr(i, 2), 16) * (1 - u) + parseInt(b.substr(i, 2), 16) * u).toString(16).padStart(2, "0")).join("");
+  }
 
   function render() {
     world.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.k.toFixed(4)})`);
@@ -1362,33 +1390,31 @@ input.switch:checked::after { transform: translateX(16px); }
         }
       }
 
-      // A shared bubble pulls the skin of every bubble it belongs to around
-      // itself, so those bubbles melt into one another right there
-      if (b.parents.length > 1) {
-        for (const pid of b.parents) {
-          const p = bubbles.get(pid);
-          if (!p) continue;
-          const pd = depthOf.get(pid);
-          const skin = sig(pd) * T.bridge;
-          const fill = fillOf(p);
-          const dx = b.x - p.x;
-          const dy = b.y - p.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const from = Math.max(0, p.r - b.r);
-          const len = dist - from;
-          const stepLen = Math.max(5, b.r * 0.4);
-          const dots = [[b.x, b.y, b.r + skin]];
-          // Tapered neck: thinner in the middle, like a stretched drop
-          for (let s = 0; s < len; s += stepLen) {
-            const t = (from + s) / dist;
-            const u = s / Math.max(1, len);
-            const rr = (b.r * 0.55 + skin * 0.5) * (0.75 + 0.25 * Math.abs(1 - 2 * u));
-            dots.push([p.x + dx * t, p.y + dy * t, rr]);
-          }
-          for (const [x, y, rr] of dots) {
-            el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(pd).bridges);
-            el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(pd).bridges);
-          }
+      // Connections: a tapered neck from this bubble to each connected one, its
+      // colour running from one to the other
+      for (const id in b.links) {
+        const o = bubbles.get(id);
+        if (!o || id < b.id) continue;
+        const d2 = Math.max(d, depthOf.get(id));
+        const ca = fillOf(b);
+        const cb = fillOf(o);
+        const [, pa, pb] = nearest(b, o);
+        const dx = pb[0] - pa[0];
+        const dy = pb[1] - pa[1];
+        const len = Math.hypot(dx, dy);
+        const w = Math.min(pa[2], pb[2]) * T.linkW;
+        const ax = pa[0] + (dx / (len || 1)) * -pa[2] * 0.5;
+        const ay = pa[1] + (dy / (len || 1)) * -pa[2] * 0.5;
+        const full = len + (pa[2] + pb[2]) * 0.5;
+        const stepLen = Math.max(4, w * 0.6);
+        for (let s2 = 0; s2 <= full; s2 += stepLen) {
+          const u = s2 / Math.max(1, full);
+          const rr = w * (0.7 + 0.3 * Math.abs(1 - 2 * u));
+          const x = ax + (dx / (len || 1)) * s2;
+          const y = ay + (dy / (len || 1)) * s2;
+          const fill = mixFill(ca, cb, u);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d2).bridges);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d2).bridges);
         }
       }
 
@@ -1505,6 +1531,9 @@ input.switch:checked::after { transform: translateX(16px); }
     btn.child.disabled = !selected;
     btn.del.disabled = !selected;
     btn.group.disabled = !selected || !Object.keys(selected.docks).length;
+    const pair = linkPair();
+    btn.link.disabled = !pair;
+    btn.link.textContent = pair && pair[1].id in pair[0].links ? "Trennen" : "Verbinden";
     btn.undo.disabled = !undoStack.length;
     btn.redo.disabled = !redoStack.length;
     colorsEl.hidden = !selected;
@@ -1546,6 +1575,7 @@ input.switch:checked::after { transform: translateX(16px); }
         const o = { id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents };
         if (b.color) o.color = b.color;
         if (Object.keys(b.docks).length) o.docks = b.docks;
+        if (Object.keys(b.links).length) o.links = Object.keys(b.links);
         return o;
       }),
     };
@@ -1579,6 +1609,7 @@ input.switch:checked::after { transform: translateX(16px); }
         parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
         color: HEX.test(o.color || "") ? o.color : null,
         docks: o.docks && typeof o.docks === "object" ? { ...o.docks } : {},
+        links: Array.isArray(o.links) ? Object.fromEntries(o.links.map((x) => [String(x), 1])) : {},
         r: keep && old.get(id) ? old.get(id).r : 0,
         vx: 0,
         vy: 0,
@@ -1601,6 +1632,14 @@ input.switch:checked::after { transform: translateX(16px); }
         const k = Number(b.docks[id]);
         if (!o || o === b || !sameLevel(b, o) || !(k > 0.2 && k <= 1.2)) delete b.docks[id];
         else o.docks[b.id] = k;
+      }
+    }
+    // Connections hold both ways and never tie a bubble to one it lies in
+    for (const b of bubbles.values()) {
+      for (const id in b.links) {
+        const o = bubbles.get(id);
+        if (!o || o === b || isAncestor(b, o) || isAncestor(o, b)) delete b.links[id];
+        else o.links[b.id] = 1;
       }
     }
     sel = new Set([...sel].map((b) => bubbles.get(b.id)).filter(Boolean));
@@ -2135,6 +2174,31 @@ input.switch:checked::after { transform: translateX(16px); }
     select(null);
   }
   btn.del.addEventListener("click", deleteSelection);
+  // Two selected bubbles that may be connected (not one inside the other)
+  function linkPair() {
+    if (sel.size !== 2) return null;
+    const [a, b] = [...sel];
+    if (!bubbles.has(a.id) || !bubbles.has(b.id) || isAncestor(a, b) || isAncestor(b, a)) return null;
+    return [a, b];
+  }
+  btn.link.addEventListener("click", () => {
+    const pair = linkPair();
+    if (!pair) return;
+    const [a, b] = pair;
+    snapshot();
+    if (b.id in a.links) {
+      delete a.links[b.id];
+      delete b.links[a.id];
+      flash(`»${name(a)}« und »${name(b)}« sind getrennt`);
+    } else {
+      a.links[b.id] = 1;
+      b.links[a.id] = 1;
+      flash(`»${name(a)}« und »${name(b)}« sind verbunden`);
+    }
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  });
   btn.group.addEventListener("click", () => {
     if (!selected) return;
     sel = dockGroup(selected);
@@ -2310,7 +2374,8 @@ input.switch:checked::after { transform: translateX(16px); }
     if (key === "shade") return v < 0.01 ? "flach" : Math.round(v * 100) + " %";
     if (key === "font" || key === "scale" || key === "inner" || key === "spacing" || key === "pull" || key === "push") return Math.round(v * 100) + " %";
     if (key === "saturation") return v < 0.01 ? "grau" : Math.round(v * 100) + " %";
-    if (key === "opacity" || key === "flow") return Math.round(v * 100) + " %";
+    if (key === "linkPull") return v < 0.01 ? "keiner" : Math.round(v * 100) + " %";
+    if (key === "opacity" || key === "flow" || key === "linkW") return Math.round(v * 100) + " %";
     if (key === "roundness") return v < 0.01 ? "frei" : v > 0.99 ? "rund" : Math.round(v * 100) + " %";
     return Math.round((v / (key === "grow" ? 2 : 1)) * 100) + " %";
   }
