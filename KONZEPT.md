@@ -1,4 +1,4 @@
-# Notizen: Zuständigkeiten als lebendige Karte
+# Verantwortungsplaner: Zuständigkeiten als lebendige Karte
 
 ## Was ich mir angeschaut habe
 

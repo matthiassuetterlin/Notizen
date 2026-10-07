@@ -1,4 +1,4 @@
-# Notizen
+# Verantwortungsplaner
 
 Zuständigkeiten einer Firma als lebendige Bubble-Karte: **Bereiche**, **Rollen** und **Menschen**,
 gezeigt in drei Linsen, die weich ineinander übergehen. Gedanken und Recherche dazu stehen in
