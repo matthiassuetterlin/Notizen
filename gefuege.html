@@ -1215,6 +1215,13 @@ $("#menuBtn").addEventListener("click", () => $("#menuPop").classList.toggle("op
 $("#menuPop").addEventListener("click", (e) => {
   const b = e.target.closest("[data-m]"); if (!b) return;
   const m = b.dataset.m;
+  // Ersetzen braucht einen zweiten Klick (keine Browser-Dialoge)
+  if ((m === "example" || m === "clear") && !b.dataset.armed) {
+    b.dataset.armed = b.textContent; b.textContent = "Wirklich? Nochmal klicken (Rückgängig geht)";
+    setTimeout(() => { if (b.dataset.armed) { b.textContent = b.dataset.armed; delete b.dataset.armed; } }, 4000);
+    return;
+  }
+  if (b.dataset.armed) { b.textContent = b.dataset.armed; delete b.dataset.armed; }
   $("#menuPop").classList.remove("open");
   if (m === "fit") fit();
   if (m === "export") {
@@ -1223,8 +1230,8 @@ $("#menuPop").addEventListener("click", (e) => {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   if (m === "import") $("#file").click();
-  if (m === "example" && confirm("Beispiel-Firma laden? Der aktuelle Stand lässt sich mit Rückgängig zurückholen.")) { change(() => { S = example(); }); seeds.menschen.clear(); seeds.netz.clear(); select(null); relayout({ fit: true }); }
-  if (m === "clear" && confirm("Mit einem leeren Gefüge beginnen? Rückgängig holt den Stand zurück.")) { change(() => { S = emptyModel(); }); select(null); relayout({ fit: true }); }
+  if (m === "example") { change(() => { S = example(); }); seeds.menschen.clear(); seeds.netz.clear(); select(null); relayout({ fit: true }); }
+  if (m === "clear") { change(() => { S = emptyModel(); }); select(null); relayout({ fit: true }); }
 });
 $("#file").addEventListener("change", async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -1233,7 +1240,7 @@ $("#file").addEventListener("change", async (e) => {
     if (!Array.isArray(d.areas) || !Array.isArray(d.roles)) throw new Error();
     change(() => { S = { areas: d.areas, roles: d.roles, people: d.people || [], links: d.links || [] }; });
     select(null); relayout({ fit: true });
-  } catch (err) { alert("Diese Datei kann ich nicht lesen."); }
+  } catch (err) { setHint("Diese Datei ließ sich nicht lesen. Erwartet wird eine JSON-Datei, die mit „Als Datei sichern“ entstanden ist.", true); }
   e.target.value = "";
 });
 $("#themeBtn").addEventListener("click", () => {
