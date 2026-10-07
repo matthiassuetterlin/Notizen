@@ -16,6 +16,7 @@
   --mark: #111111;
   --outline: #595959;
   --d0: #ffffff;
+  --pfill: #ffffff; --pink: rgba(30, 28, 26, 0.9); --pink-dim: rgba(30, 28, 26, 0.55);
   --d1: #f7f6f3;
   --dot: #e6e3de;
   --panel: rgba(255, 255, 255, 0.95);
@@ -254,9 +255,9 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 /* svg text */
 .lbl-role { font-family: var(--label-font); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .lbl-area { font-family: var(--display); font-weight: 600; fill: var(--ink); pointer-events: none; letter-spacing: 0.02em; }
-.lbl-person { font-family: var(--label-font); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-.lbl-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-dim); text-anchor: middle; pointer-events: none; }
-.chipt { font-family: var(--mono); font-size: 8.5px; font-weight: 500; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-person { font-family: var(--label-font); font-weight: 600; fill: var(--pink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--pink-dim); text-anchor: middle; pointer-events: none; }
+.chipt { font-family: var(--mono); font-size: 8.5px; font-weight: 500; fill: var(--pink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .lnk-t { font-family: var(--mono); font-size: 10px; fill: var(--ink-dim); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
 
 @media (max-width: 760px) {
@@ -498,7 +499,7 @@ let TC = {};
 function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   const g = (n) => cs.getPropertyValue(n).trim();
-  TC = { d0: g("--d0"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn"), accent: g("--accent") };
+  TC = { d0: g("--d0"), pfill: g("--pfill"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn"), accent: g("--accent") };
   TC.dark = lum(hex(TC.d0)) < 0.4;
   buildFilter();
   $("#arrow path").setAttribute("stroke", TC.dim);
@@ -845,13 +846,13 @@ function paintOne(k, e) {
   if (t === "a") { const a = area(id); if (a) e.setAttribute("fill", D(tint(col(a.color), 0.72))); }
   else if (t === "h") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), 0.5))); }
   else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))); }
-  else if (t === "p") e.setAttribute("fill", D(TC.d0));
+  else if (t === "p") e.setAttribute("fill", D(TC.pfill));
   else if (t === "la") { const a = area(id); if (a) e._tp.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
   else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
   else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
   else if (t === "c") {
     const p = person(id2), heavy = gapsOn && p && rolesOf(p.id).length >= HEAVY;
-    e._c.setAttribute("fill", TC.d0);
+    e._c.setAttribute("fill", TC.pfill);
     e._c.setAttribute("stroke", heavy ? TC.warn : TC.outline);
     e._c.setAttribute("stroke-width", heavy ? 1.8 : 0.8);
     e._t.textContent = p ? initials(p.name) : "";
