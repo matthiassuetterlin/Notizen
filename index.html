@@ -131,6 +131,11 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 }
 .ibtn:hover { background: var(--seg); }
 .ibtn[aria-pressed="true"] { color: var(--warn); }
+#linesBtn[aria-pressed="true"] { color: var(--ink); }
+.lsw { width: 24px; height: 14px; border-radius: 999px; background: var(--seg); position: relative; transition: background .2s; flex: none; }
+.lsw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
+#linesBtn[aria-pressed="true"] .lsw { background: var(--accent); }
+#linesBtn[aria-pressed="true"] .lsw::after { transform: translateX(10px); }
 .badge { font-family: var(--mono); font-size: 11px; background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 7px; }
 .pop {
   position: fixed; top: 60px; right: 16px; z-index: 6; width: 300px; max-height: 70vh; overflow: auto;
@@ -378,6 +383,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
   </div>
   <div class="right">
     <button id="flagsBtn" class="ibtn pill" title="Fähnchen: offene Punkte, die noch geklärt werden müssen"><svg class="flag-ico" width="13" height="14" viewBox="0 0 13 14" aria-hidden="true"><path d="M2 13 V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2.6 1.6 L11.5 4.4 L2.6 7.4 Z" fill="currentColor"/></svg><span class="lt">Fähnchen</span><span id="flagCount" class="badge">0</span></button>
+    <button id="linesBtn" class="ibtn pill" aria-pressed="false" title="Alle Verbindungen einblenden"><span class="lsw" aria-hidden="true"></span><span class="lt">Linien</span></button>
     <button id="gapsBtn" class="ibtn pill" aria-pressed="false" title="Lücken und Überlast zeigen"><span class="lt">Lücken</span><span id="gapCount" class="badge">0</span></button>
     <button id="addBtn" class="ibtn pill" title="Neu anlegen">+</button>
     <button id="themeBtn" class="ibtn pill" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8 A6.2 6.2 0 0 1 8 14.2 Z" fill="currentColor"/></svg></button>
@@ -786,7 +792,8 @@ function layoutKreise(L) {
 }
 
 let layoutVersion = 0;
-function linkVisible(l) { return linkPopId === l.id || (sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id)); }
+let allLinks = readLS("notizen.allLinks") === "1"; // Schalter „Linien“ oben: alle Verbindungen ohne Auswahl zeigen
+function linkVisible(l) { return allLinks || linkPopId === l.id || (sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id)); }
 function runSim(nodes, seed, setup, ticks = 320) {
   // gleiche Daten, gleiche Karte: nur neu rechnen, wenn sich etwas geändert hat
   if (seed.ver === layoutVersion && nodes.every((n) => seed.has(n.key))) {
@@ -1881,6 +1888,11 @@ function updateGaps() {
   if (!n) h += `<div class="ok">Keine Lücken gefunden. Jede Rolle ist besetzt.</div>`;
   pop.innerHTML = h;
 }
+$("#linesBtn").setAttribute("aria-pressed", allLinks);
+$("#linesBtn").addEventListener("click", () => {
+  allLinks = !allLinks; writeLS("notizen.allLinks", allLinks ? "1" : "0");
+  $("#linesBtn").setAttribute("aria-pressed", allLinks); relayout({ dur: 300 });
+});
 $("#gapsBtn").addEventListener("click", () => { $("#gapsPop").classList.toggle("open"); });
 $("#gapsPop").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
