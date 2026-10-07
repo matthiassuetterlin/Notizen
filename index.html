@@ -8,8 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
 <style>
-/* Layout: one endless canvas. Bubbles melt under an SVG goo filter (like the
-   website's grid); labels ride the same pan/zoom; HUD on top, tools below. */
+/* Layout: one endless canvas. Bubbles melt under SVG goo filters (like the
+   website's grid); labels ride the same pan/zoom; HUD on top, tools below,
+   settings slide in from the right. */
 :root {
   --bg: #ffffff;
   --ink: rgba(44, 40, 36, 0.82);
@@ -21,24 +22,24 @@
   --d2: #efede9;
   --d3: #e7e4df;
   --dot: #e6e3de;
-  --panel: rgba(255, 255, 255, 0.92);
+  --panel: rgba(255, 255, 255, 0.94);
   --line: rgba(0, 0, 0, 0.14);
   --display: "Playfair Display", "Times New Roman", Times, serif;
   --text: Helvetica, "Helvetica Neue", Arial, sans-serif;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fs: 1;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
     --mark: #f4f0ea; --outline: #8c8781; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
-    --dot: #2a2826; --panel: rgba(30, 29, 27, 0.92); --line: rgba(255, 255, 255, 0.16);
+    --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
   --mark: #f4f0ea; --outline: #8c8781; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
-  --dot: #2a2826; --panel: rgba(30, 29, 27, 0.92); --line: rgba(255, 255, 255, 0.16);
+  --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
   color-scheme: dark;
 }
 
@@ -59,7 +60,7 @@ button {
   padding: 0;
   cursor: pointer;
 }
-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 #canvas {
   position: fixed;
@@ -70,9 +71,10 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   user-select: none;
   -webkit-user-select: none;
   background-color: var(--bg);
-  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px);
 }
+#canvas.has-dots { background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); }
 #canvas.is-dragging { cursor: grabbing; }
+#canvas.is-panning { cursor: move; }
 
 #labels {
   position: fixed;
@@ -91,17 +93,19 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   text-align: center;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  hyphens: manual;
   line-height: 1.25;
   color: var(--ink);
 }
 .label { outline: none; cursor: text; caret-color: var(--ink); }
 .label.editing { pointer-events: auto; }
 .label.is-empty::before { content: "Notiz"; color: var(--ink-dim); }
-.d0 { font-size: 21px; line-height: 1.15; letter-spacing: -0.01em; }
-.d1 { font-size: 15px; }
-.d2 { font-size: 13px; }
-.d3 { font-size: 12px; }
+/* Text on a coloured bubble follows the colour, not the theme */
+.label.on-light { color: rgba(44, 40, 36, 0.86); caret-color: rgba(44, 40, 36, 0.86); }
+.label.on-dark { color: rgba(250, 247, 242, 0.92); caret-color: rgba(250, 247, 242, 0.92); }
+.d0 { font-size: calc(21px * var(--fs)); line-height: 1.15; letter-spacing: -0.01em; }
+.d1 { font-size: calc(15px * var(--fs)); }
+.d2 { font-size: calc(13px * var(--fs)); }
+.d3 { font-size: calc(12px * var(--fs)); }
 #measure { visibility: hidden; pointer-events: none; overflow-wrap: normal; }
 
 #hud {
@@ -124,6 +128,7 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   color: var(--mark);
 }
 #crumb {
+  flex: 1;
   margin: 0;
   min-width: 0;
   font-size: 14px;
@@ -132,6 +137,85 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Hamburger (same three lines as the website's settings button) */
+#menu-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
+  right: 0.9rem;
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+#menu-btn span {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  background: var(--ink);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s;
+}
+#menu-btn[aria-expanded="true"] span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+#menu-btn[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+#menu-btn[aria-expanded="true"] span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  width: min(330px, 100%);
+  padding: calc(env(safe-area-inset-top, 0px) + 4rem) 1.1rem calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+#panel h2 {
+  margin: 0 0 0.25rem;
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--mark);
+}
+#panel h3 {
+  margin: 1.1rem 0 0.35rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.tune-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  padding: 0.3rem 0;
+}
+.tune-row input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--ink); }
+.tune-row input[type="checkbox"] { margin: 0; accent-color: var(--ink); }
+.tune-row input[type="color"] { width: 44px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+.tune-val { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+.tune-note { margin: 0.2rem 0 0; color: var(--ink-dim); line-height: 1.45; }
+.tune-actions { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
+.tune-actions button {
+  flex: 1;
+  padding: 0.55rem;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 #dock {
@@ -155,10 +239,11 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   text-wrap: balance;
 }
 #hint.is-live { color: var(--ink); }
-#tools {
+.bar {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 6px;
   padding: 6px;
   background: var(--panel);
@@ -179,7 +264,20 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 #tools button:hover:not(:disabled) { border-color: var(--ink-dim); }
 #tools button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 #tools button:disabled { opacity: 0.35; cursor: default; }
-#tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+#tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px; }
+
+#colors { padding: 6px 8px; gap: 8px; }
+#colors .swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--sw);
+}
+#colors .swatch[aria-pressed="true"] { outline: 1.5px solid var(--ink); outline-offset: 2px; }
+#colors .swatch.none { background: linear-gradient(135deg, var(--d0) 45%, var(--outline) 46%, var(--outline) 54%, var(--d0) 55%); }
+#colors label { position: relative; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px dashed var(--ink-dim); font-size: 14px; color: var(--ink-dim); cursor: pointer; }
+#colors input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 
 @media (max-width: 640px) {
   #dock { left: 1rem; right: 1rem; transform: none; width: auto; max-width: none; }
@@ -187,13 +285,17 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   #tools button { padding: 7px 9px; font-size: 12px; }
   #hint .long { display: none; }
 }
+@media (prefers-reduced-motion: reduce) {
+  #menu-btn span { transition: none; }
+}
 </style>
 </head>
 <body>
-<svg id="canvas" aria-label="Bubble-Fläche">
+<svg id="canvas" class="has-dots" aria-label="Bubble-Fläche">
   <defs id="defs"></defs>
   <g id="world">
-    <g id="layers"></g>
+    <g id="fills"></g>
+    <g id="lines"></g>
     <g id="overlay"></g>
   </g>
 </svg>
@@ -204,10 +306,20 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   <h1 id="mark">Notizen</h1>
   <p id="crumb"></p>
 </header>
+<button type="button" id="menu-btn" aria-label="Einstellungen" aria-expanded="false" aria-controls="panel"><span></span><span></span><span></span></button>
+<aside id="panel" aria-label="Einstellungen" hidden>
+  <h2>Einstellungen</h2>
+  <p class="tune-note">Wirken sofort und werden in diesem Browser gespeichert.</p>
+  <div id="tune"></div>
+  <div class="tune-actions">
+    <button type="button" id="tune-reset">Standard wiederherstellen</button>
+  </div>
+</aside>
 
 <div id="dock">
   <p id="hint"></p>
-  <div id="tools" role="toolbar" aria-label="Werkzeuge">
+  <div id="colors" class="bar" role="group" aria-label="Farbe der Bubble" hidden></div>
+  <div id="tools" class="bar" role="toolbar" aria-label="Werkzeuge">
     <button type="button" id="btn-new">Neue Bubble</button>
     <button type="button" id="btn-child" disabled>Unterbubble</button>
     <button type="button" id="btn-multi" aria-pressed="false" title="Beim Loslassen zusätzlich zuordnen statt verschieben (wie Shift)">Auch zuordnen</button>
@@ -227,39 +339,100 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
   const NS = "http://www.w3.org/2000/svg";
   const STORE = "notizen-bubbles-v1";
+  const TUNE_STORE = "notizen-tune-v1";
 
-  const svg = document.getElementById("canvas");
-  const world = document.getElementById("world");
-  const defs = document.getElementById("defs");
-  const layersG = document.getElementById("layers");
-  const overlay = document.getElementById("overlay");
-  const labelsEl = document.getElementById("labels");
-  const measurer = document.getElementById("measure");
-  const hintEl = document.getElementById("hint");
-  const crumbEl = document.getElementById("crumb");
+  const $ = (id) => document.getElementById(id);
+  const svg = $("canvas");
+  const world = $("world");
+  const defs = $("defs");
+  const fillsG = $("fills");
+  const linesG = $("lines");
+  const overlay = $("overlay");
+  const labelsEl = $("labels");
+  const measurer = $("measure");
+  const hintEl = $("hint");
+  const crumbEl = $("crumb");
+  const colorsEl = $("colors");
   const btn = {
-    new: document.getElementById("btn-new"),
-    child: document.getElementById("btn-child"),
-    multi: document.getElementById("btn-multi"),
-    del: document.getElementById("btn-del"),
-    undo: document.getElementById("btn-undo"),
-    fit: document.getElementById("btn-fit"),
-    export: document.getElementById("btn-export"),
-    import: document.getElementById("btn-import"),
+    new: $("btn-new"),
+    child: $("btn-child"),
+    multi: $("btn-multi"),
+    del: $("btn-del"),
+    undo: $("btn-undo"),
+    fit: $("btn-fit"),
+    export: $("btn-export"),
+    import: $("btn-import"),
   };
-  const importFile = document.getElementById("import-file");
+  const importFile = $("import-file");
 
-  // Per nesting depth (0 = main bubble): goo blur, smallest radius,
-  // label width when the bubble holds others, rim padding around children
-  const SIGMA = [9, 6, 5, 4];
+  // --- Settings (hamburger menu) ------------------------------------------------
+  const DEFAULTS = {
+    attract: 0.006, // children drift towards the middle of their bubble
+    repel: 0.12, // neighbours push apart when they come too close
+    gap: 1, // air between neighbours, × goo
+    link: 0.006, // bubbles that share a bubble pull together
+    linkGap: 0.8, // how far they stay apart, × size of the shared bubble
+    friction: 0.84, // share of the speed kept per frame (higher = glides longer)
+    throw: 0.7, // momentum a bubble keeps when it is let go
+    goo: 12, // blur that melts shapes together, px
+    threshold: 0.32, // alpha where the contour sits (lower = fuller drops)
+    sharp: 22, // steepness of the contour
+    bridge: 1.8, // width of the skin around a shared bubble, × goo
+    size: 1, // bubble size
+    pad: 1, // space between rim and children
+    blend: 16, // colour gradient between nested bubbles, px
+    outline: true,
+    outlineW: 0.6, // hairline width, px
+    outlineColor: "", // empty = theme colour
+    dots: true,
+    font: 1,
+  };
+  const SPEC = [
+    ["Bewegung"],
+    ["attract", "Anziehung nach innen", 0, 0.03, 0.001],
+    ["repel", "Abstoßung", 0.01, 0.5, 0.01],
+    ["gap", "Abstand zwischen Bubbles", 0.3, 3, 0.05],
+    ["link", "Zug bei Verbindungen", 0, 0.03, 0.001],
+    ["linkGap", "Abstand verbundener Bubbles", 0, 2, 0.05],
+    ["friction", "Gleiten", 0.5, 0.97, 0.01],
+    ["throw", "Schwung beim Loslassen", 0, 1.5, 0.05],
+    ["Form"],
+    ["goo", "Verschmelzen", 2, 30, 0.5],
+    ["threshold", "Tropfenfülle (links = voller)", 0.12, 0.7, 0.01],
+    ["sharp", "Kantenschärfe", 4, 60, 1],
+    ["bridge", "Breite der Verbindung", 0.4, 4, 0.05],
+    ["size", "Bubble-Größe", 0.6, 1.8, 0.05],
+    ["pad", "Innenabstand", 0.3, 3, 0.05],
+    ["Farbe und Kontur"],
+    ["blend", "Farbverlauf", 0, 40, 0.5],
+    ["outline", "Kontur zeigen"],
+    ["outlineW", "Konturstärke", 0.2, 4, 0.1],
+    ["outlineColor", "Konturfarbe"],
+    ["dots", "Punktraster im Hintergrund"],
+    ["Text"],
+    ["font", "Schriftgröße", 0.7, 1.6, 0.05],
+  ];
+  const T = { ...DEFAULTS };
+  try {
+    Object.assign(T, JSON.parse(localStorage.getItem(TUNE_STORE) || "{}"));
+  } catch (e) {
+    /* defaults */
+  }
+  for (const k of Object.keys(T)) if (!(k in DEFAULTS)) delete T[k];
+
+  // Per nesting depth (0 = main bubble)
+  const SIG_K = [1, 0.67, 0.55, 0.45]; // goo of the hairline, × T.goo
   const MIN_R = [64, 36, 28, 24];
   const PARENT_W = [180, 120, 100, 90];
   const PAD = [18, 12, 10, 9];
-  const LABEL_TOP = 16; // label distance from the rim in a bubble with children
+  const LABEL_TOP = 16;
   const dd = (d) => Math.min(d, 3);
+  const sig = (d) => T.goo * SIG_K[dd(d)];
+
+  const PALETTE = ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"];
 
   const IDLE_HINT =
-    'Doppelklick: neue Bubble · Klick: schreiben · Ziehen: in eine andere Bubble legen<span class="long"> · Shift beim Loslassen: zusätzlich zuordnen</span>';
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: in eine andere Bubble legen<span class="long"> · Shift beim Loslassen: zusätzlich zuordnen · Entf: löschen · Mittlere Maustaste: Ansicht verschieben</span>';
 
   let bubbles = new Map();
   let view = { x: 0, y: 0, k: 1 };
@@ -279,6 +452,21 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   // --- Structure ------------------------------------------------------------
   let kids = new Map();
   let depthOf = new Map();
+
+  // a is an ancestor of b
+  function isAncestor(a, b) {
+    const stack = [...b.parents];
+    const seen = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === a.id) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const p = bubbles.get(id);
+      if (p) stack.push(...p.parents);
+    }
+    return false;
+  }
 
   // A bubble that belongs to X and to something inside X only needs the inner one
   function normalize() {
@@ -308,21 +496,7 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
       return d;
     };
     for (const b of bubbles.values()) dep(b, 0);
-  }
-
-  // a is an ancestor of b
-  function isAncestor(a, b) {
-    const stack = [...b.parents];
-    const seen = new Set();
-    while (stack.length) {
-      const id = stack.pop();
-      if (id === a.id) return true;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const p = bubbles.get(id);
-      if (p) stack.push(...p.parents);
-    }
-    return false;
+    orderDirty = true;
   }
 
   function subtree(b) {
@@ -348,7 +522,19 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     return out;
   }
 
-  // Move a bubble with everything that belongs only to it
+  // The outermost bubble that carries b around (b itself for main and shared bubbles)
+  function anchor(b) {
+    let a = b;
+    const seen = new Set();
+    while (a.parents.length === 1 && !seen.has(a)) {
+      seen.add(a);
+      const p = bubbles.get(a.parents[0]);
+      if (!p) break;
+      a = p;
+    }
+    return a;
+  }
+
   function moveTree(b, dx, dy, seen = new Set()) {
     if (seen.has(b)) return;
     seen.add(b);
@@ -361,11 +547,11 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     return "b" + Date.now().toString(36) + (seq++).toString(36);
   }
 
-  function make(text, x, y, parents = []) {
-    const b = { id: uid(), text, x, y, parents: [...parents], r: 0 };
+  function make(text, x, y, parents = [], color = null) {
+    const b = { id: uid(), text, x, y, parents: [...parents], color, r: 0, vx: 0, vy: 0 };
     bubbles.set(b.id, b);
     topo();
-    b.r = MIN_R[dd(depthOf.get(b.id))];
+    b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
     return b;
   }
 
@@ -408,10 +594,9 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     const key = "L" + d + "|" + text;
     let s = mcache.get(key);
     if (!s) {
-      // Try wide-and-short and narrow-and-tall text boxes for each radius
-      let r = MIN_R[d];
+      let r = Math.round(MIN_R[d] * T.size);
       let w = Math.round(r * 1.36);
-      search: for (; r < 480; r += 3) {
+      search: for (; r < 520; r += 3) {
         for (const f of [1.36, 1.55, 1.75, 1.2]) {
           const tw = Math.round(r * f);
           const m = measure(text, d, tw);
@@ -421,7 +606,7 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
           }
         }
       }
-      if (r >= 480) w = Math.round(r * 1.36);
+      if (r >= 520) w = Math.round(r * 1.36);
       s = { r, w: w + 2, h: measure(text, d, w).h };
       mcache.set(key, s);
     }
@@ -429,34 +614,94 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   }
   function parentLabel(text, d) {
     d = dd(d);
-    const w = PARENT_W[d];
+    const w = Math.round(PARENT_W[d] * T.font);
     return { w, h: measure(text, d, w).h };
   }
 
-  // --- Physics: pack children, keep main bubbles apart, pull connected ones together
+  // --- Physics ------------------------------------------------------------------
+  // Forces change speed; friction lets everything come to a real stop.
+  // Every force acts on a pair (or pulls a child inside its own bubble),
+  // so nothing can push the whole picture across the screen.
   function step() {
-    let energy = 0;
     const moving = drag && drag.moved ? drag.b : null;
     const pinned = moving ? ownTree(moving) : null;
     const isPinned = (b) => pinned !== null && pinned.has(b);
-    const push = (b, dx, dy) => {
-      if (isPinned(b) || !isFinite(dx) || !isFinite(dy)) return;
-      moveTree(b, dx, dy);
-    };
     const all = [...bubbles.values()];
     for (const b of all) {
-      b._px = b.x;
-      b._py = b.y;
+      b._fx = 0;
+      b._fy = 0;
     }
+    const force = (b, fx, fy) => {
+      if (!isFinite(fx) || !isFinite(fy)) return;
+      b._fx += fx;
+      b._fy += fy;
+    };
 
     for (const b of all) {
       const d = depthOf.get(b.id);
       b._own = (kids.get(b.id) || []).filter((c) => c.parents.length === 1 && c !== moving);
       if (b._own.length) {
         b._label = parentLabel(b.text, d);
-        b._off = (LABEL_TOP + b._label.h + 8 - PAD[dd(d)]) / 2;
+        b._off = (LABEL_TOP + b._label.h + 8 - PAD[dd(d)] * T.pad) / 2;
       } else {
         b._label = leafSize(b.text, d);
+      }
+      b._linked = null;
+    }
+
+    // Bubbles sharing a bubble: pull their carriers together, park the shared one between
+    const groups = new Map();
+    for (const c of all) {
+      if (c.parents.length < 2) continue;
+      const key = [...c.parents].sort().join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    for (const list of groups.values()) {
+      const ps = list[0].parents.map((id) => bubbles.get(id)).filter(Boolean);
+      if (ps.length < 2) continue;
+      const maxR = Math.max(...list.map((c) => c.r));
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          const a = ps[i];
+          const c = ps[j];
+          const A = anchor(a);
+          const C = anchor(c);
+          if (A === C) continue;
+          (A._linked ||= new Set()).add(C);
+          (C._linked ||= new Set()).add(A);
+          const dx = c.x - a.x;
+          const dy = c.y - a.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const want = a.r + c.r + maxR * T.linkGap;
+          const f = Math.max(-4, Math.min(4, (dist - want) * T.link));
+          force(A, (dx / dist) * f, (dy / dist) * f);
+          force(C, (-dx / dist) * f, (-dy / dist) * f);
+        }
+      }
+      let mx = 0;
+      let my = 0;
+      for (const p of ps) {
+        let ox = 0;
+        let oy = 0;
+        for (const q of ps) if (q !== p) { ox += q.x; oy += q.y; }
+        ox /= ps.length - 1;
+        oy /= ps.length - 1;
+        const dist = Math.hypot(ox - p.x, oy - p.y) || 1;
+        mx += p.x + ((ox - p.x) / dist) * p.r;
+        my += p.y + ((oy - p.y) / dist) * p.r;
+      }
+      mx /= ps.length;
+      my /= ps.length;
+      const al = Math.hypot(ps[1].x - ps[0].x, ps[1].y - ps[0].y) || 1;
+      const px = -(ps[1].y - ps[0].y) / al;
+      const py = (ps[1].x - ps[0].x) / al;
+      const spread = list.reduce((s, c) => s + 2 * c.r + 12, 0);
+      let along = -spread / 2;
+      for (const c of list) {
+        const o = list.length > 1 ? along + c.r + 6 : 0;
+        along += 2 * c.r + 12;
+        force(c, (mx + px * o - c.x - c.vx * 4) * 0.05, (my + py * o - c.y - c.vy * 4) * 0.05);
       }
     }
 
@@ -473,90 +718,53 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
           const min = a.r + c.r + gap;
           if (dist >= min) continue;
           if (dist < 0.01) {
-            dx = Math.random() - 0.5;
-            dy = Math.random() - 0.5;
+            dx = 1;
+            dy = 0.5;
             dist = Math.hypot(dx, dy);
           }
-          const f = ((min - dist) / dist) * 0.45;
-          push(a, -dx * f, -dy * f);
-          push(c, dx * f, dy * f);
+          const f = Math.min(8, (min - dist) * T.repel) / dist;
+          force(a, -dx * f, -dy * f);
+          force(c, dx * f, dy * f);
         }
       }
     };
 
-    // Shared bubbles: group by the set of bubbles they belong to
-    const groups = new Map();
-    for (const b of all) b._linked = null;
-    for (const c of all) {
-      if (c.parents.length < 2) continue;
-      const key = [...c.parents].sort().join("|");
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(c);
-    }
-    for (const list of groups.values()) {
-      const ps = list[0].parents.map((id) => bubbles.get(id)).filter(Boolean);
-      if (ps.length < 2) continue;
-      const maxR = Math.max(...list.map((c) => c.r));
-      // Pull the owning bubbles together until they almost touch at the shared one
-      for (let i = 0; i < ps.length; i++) {
-        for (let j = i + 1; j < ps.length; j++) {
-          const a = ps[i];
-          const c = ps[j];
-          if (isAncestor(a, c) || isAncestor(c, a)) continue;
-          (a._linked ||= new Set()).add(c);
-          (c._linked ||= new Set()).add(a);
-          const dx = c.x - a.x;
-          const dy = c.y - a.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const want = a.r + c.r + maxR * 0.9;
-          let f = (dist - want) * 0.03;
-          f = Math.max(-6, Math.min(6, f));
-          push(a, (dx / dist) * f, (dy / dist) * f);
-          push(c, (-dx / dist) * f, (-dy / dist) * f);
-        }
-      }
-      // Meeting point: between the rims, facing each other
-      let mx = 0;
-      let my = 0;
-      for (const p of ps) {
-        let ox = 0;
-        let oy = 0;
-        for (const q of ps) if (q !== p) { ox += q.x; oy += q.y; }
-        ox /= ps.length - 1;
-        oy /= ps.length - 1;
-        const dist = Math.hypot(ox - p.x, oy - p.y) || 1;
-        mx += p.x + ((ox - p.x) / dist) * p.r;
-        my += p.y + ((oy - p.y) / dist) * p.r;
-      }
-      mx /= ps.length;
-      my /= ps.length;
-      const ax = ps[1].x - ps[0].x;
-      const ay = ps[1].y - ps[0].y;
-      const al = Math.hypot(ax, ay) || 1;
-      const px = -ay / al;
-      const py = ax / al;
-      const n = list.length;
-      const spread = list.reduce((s, c) => s + 2 * c.r + 12, 0);
-      let along = -spread / 2;
-      list.forEach((c) => {
-        const o = along + c.r + 6;
-        along += 2 * c.r + 12;
-        const tx = mx + px * (n > 1 ? o : 0);
-        const ty = my + py * (n > 1 ? o : 0);
-        push(c, (tx - c.x) * 0.2, (ty - c.y) * 0.2);
-      });
-    }
-
-    // Children gather below the label of their bubble and keep a little air
     for (const b of all) {
       if (!b._own.length) continue;
       const d = depthOf.get(b.id);
       const tx = b.x;
       const ty = b.y + b._off;
-      for (const c of b._own) push(c, (tx - c.x) * 0.025, (ty - c.y) * 0.025);
-      repel(b._own, SIGMA[dd(d + 1)] * 3);
+      for (const c of b._own) force(c, (tx - c.x) * T.attract, (ty - c.y) * T.attract);
+      repel(b._own, sig(d + 1) * 3 * T.gap);
     }
-    repel(all.filter((b) => !b.parents.length), SIGMA[0] * 3.4);
+    repel(all.filter((b) => !b.parents.length), sig(0) * 2.6 * T.gap);
+
+    // Integrate: speed with friction, then a firm stop when it gets tiny
+    let energy = 0;
+    for (const b of all) {
+      if (isPinned(b)) {
+        b.vx = 0;
+        b.vy = 0;
+        continue;
+      }
+      b.vx = (b.vx + b._fx) * T.friction;
+      b.vy = (b.vy + b._fy) * T.friction;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > 40) {
+        b.vx *= 40 / sp;
+        b.vy *= 40 / sp;
+      }
+      if (sp < 0.03 && Math.hypot(b._fx, b._fy) < 0.03) {
+        b.vx = 0;
+        b.vy = 0;
+      }
+    }
+    for (const b of all) {
+      if (b.vx || b.vy) {
+        moveTree(b, b.vx, b.vy);
+        energy += Math.abs(b.vx) + Math.abs(b.vy);
+      }
+    }
 
     // Radii, innermost first: a bubble wraps its own children and its label
     const order = all.slice().sort((a, b) => depthOf.get(b.id) - depthOf.get(a.id));
@@ -566,17 +774,19 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
       if (b._own.length) {
         const L = b._label;
         const h = LABEL_TOP + L.h;
-        target = Math.max(MIN_R[d] * 1.2, (L.w * L.w) / 4 / (2 * h) + h / 2);
-        for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d]);
+        target = Math.max(MIN_R[d] * T.size * 1.2, (L.w * L.w) / 4 / (2 * h) + h / 2);
+        for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d] * T.pad);
       } else {
         target = b._label.r;
       }
-      const dr = (target - b.r) * 0.3;
-      b.r += dr;
-      energy += Math.abs(dr);
+      const dr = (target - b.r) * 0.25;
+      if (Math.abs(dr) > 0.01) {
+        b.r += dr;
+        energy += Math.abs(dr);
+      } else {
+        b.r = target;
+      }
     }
-    // Net movement only: pushes that cancel out leave the picture still
-    for (const b of all) energy += Math.abs(b.x - b._px) + Math.abs(b.y - b._py);
     return energy;
   }
 
@@ -587,40 +797,88 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     if (parent) parent.appendChild(n);
     return n;
   }
+  function cssColor(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
 
-  // Goo with a hairline along the melted contour (same recipe as the website grid)
+  // Fill: colours blur into each other (nested and shared bubbles flow
+  // into one another), cut out by the melted shape of everything.
+  // Lines: one hairline per depth along its melted contour (website grid recipe).
   function buildFilters() {
     defs.textContent = "";
-    const hex = getComputedStyle(document.documentElement).getPropertyValue("--outline").trim() || "#595959";
-    const n = parseInt(hex.replace("#", ""), 16) || 0x595959;
-    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => (v / 255).toFixed(3));
-    SIGMA.forEach((sigma, i) => {
-      const f = el("filter", { id: "goo" + i, x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
-      el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: sigma, result: "blur" }, f);
-      el("feColorMatrix", { in: "blur", type: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -9", result: "goo" }, f);
-      const edge = 0.396 + 0.9 / (sigma * 2.5066);
-      el("feColorMatrix", { in: "blur", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 40 ${(-(40 * edge - 0.5)).toFixed(3)}`, result: "inner" }, f);
-      el("feColorMatrix", { in: "goo", type: "matrix", values: `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  0 0 0 1 0`, result: "tint" }, f);
-      el("feComposite", { in: "tint", in2: "inner", operator: "out", result: "line" }, f);
-      const m = el("feMerge", {}, f);
-      el("feMergeNode", { in: "goo" }, m);
-      el("feMergeNode", { in: "line" }, m);
-    });
+    const th = T.threshold;
+    const S = T.sharp;
+    const alpha = (k, t) => `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${k} ${(-(k * t - 0.5)).toFixed(3)}`;
+    const base = cssColor("--d0", "#ffffff");
+
+    const f = el("filter", { id: "fill", x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
+    el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: Math.max(0.01, T.blend), result: "cb" }, f);
+    el("feFlood", { "flood-color": base, result: "base" }, f);
+    el("feComposite", { in: "cb", in2: "base", operator: "over", result: "col" }, f);
+    el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: sig(0), result: "ab" }, f);
+    el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, f);
+    el("feComposite", { in: "col", in2: "shape", operator: "in" }, f);
+
+    const line = T.outlineColor || cssColor("--outline", "#595959");
+    for (let d = 0; d < 4; d++) {
+      const s = sig(d);
+      const g = el("filter", { id: "line" + d, x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
+      el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: s, result: "ab" }, g);
+      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, g);
+      const edge = th + 0.5 / S + T.outlineW / (s * 2.5066);
+      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(40, edge), result: "inner" }, g);
+      el("feFlood", { "flood-color": line, result: "ink" }, g);
+      el("feComposite", { in: "ink", in2: "shape", operator: "in", result: "tint" }, g);
+      el("feComposite", { in: "tint", in2: "inner", operator: "out" }, g);
+    }
+    linesG.style.display = T.outline ? "" : "none";
+    svg.classList.toggle("has-dots", !!T.dots);
+    document.documentElement.style.setProperty("--fs", T.font);
+    dirty = true;
   }
 
-  const layers = [];
-  function layer(d) {
-    while (layers.length <= d) {
-      const i = layers.length;
-      const g = el("g", { filter: `url(#goo${dd(i)})` }, layersG);
-      layers.push({ g, bridges: el("g", {}, g), bodies: el("g", {}, g) });
+  // Fill layer: one group per depth (bridges under the bubbles of that depth)
+  // Line layer: one filtered group per depth
+  const fillLayers = [];
+  const lineLayers = [];
+  function fillLayer(d) {
+    while (fillLayers.length <= d) {
+      const g = el("g", {}, fillsG);
+      fillLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
     }
-    return layers[d];
+    return fillLayers[d];
   }
-  const circles = new Map();
+  function lineLayer(d) {
+    while (lineLayers.length <= d) {
+      const i = lineLayers.length;
+      const g = el("g", { filter: `url(#line${dd(i)})` }, linesG);
+      lineLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
+    }
+    return lineLayers[d];
+  }
+  fillsG.setAttribute("filter", "url(#fill)");
+
+  const fillEls = new Map();
+  const lineEls = new Map();
   const labels = new Map();
+  let orderDirty = true;
   const selRing = el("circle", { fill: "none", stroke: "var(--ink)", "stroke-opacity": "0.55" }, overlay);
   const dropRing = el("circle", { fill: "var(--ink)", "fill-opacity": "0.04", stroke: "var(--ink)", "stroke-dasharray": "4 5" }, overlay);
+
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  }
+  // Uncoloured bubbles take the colour of the bubble they sit in
+  function colorOf(b) {
+    const seen = new Set();
+    for (let x = b; x && !seen.has(x); x = bubbles.get(x.parents[0])) {
+      if (x.color) return x.color;
+      seen.add(x);
+    }
+    return null;
+  }
+  const fillOf = (b) => colorOf(b) || `var(--d${dd(depthOf.get(b.id))})`;
 
   function render() {
     world.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.k.toFixed(4)})`);
@@ -629,45 +887,60 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     svg.style.backgroundSize = `${gs}px ${gs}px`;
     svg.style.backgroundPosition = `${view.x}px ${view.y}px`;
 
-    for (const L of layers) L.bridges.textContent = "";
-    for (const [id, c] of circles) if (!bubbles.has(id)) { c.remove(); circles.delete(id); }
-    for (const [id, l] of labels) if (!bubbles.has(id)) { l.remove(); labels.delete(id); }
+    for (const L of fillLayers) L.bridges.textContent = "";
+    for (const L of lineLayers) L.bridges.textContent = "";
+    for (const m of [fillEls, lineEls, labels]) {
+      for (const [id, n] of m) if (!bubbles.has(id)) { n.remove(); m.delete(id); }
+    }
 
     for (const b of bubbles.values()) {
       const d = depthOf.get(b.id);
-      let c = circles.get(b.id);
-      if (!c) {
-        c = el("circle", {});
-        circles.set(b.id, c);
+      let fc = fillEls.get(b.id);
+      let lc = lineEls.get(b.id);
+      if (!fc) {
+        fc = el("circle", {});
+        lc = el("circle", {});
+        fillEls.set(b.id, fc);
+        lineEls.set(b.id, lc);
       }
-      const L = layer(d);
-      if (c.parentNode !== L.bodies) L.bodies.appendChild(c);
-      c.setAttribute("cx", b.x.toFixed(1));
-      c.setAttribute("cy", b.y.toFixed(1));
-      c.setAttribute("r", Math.max(1, b.r).toFixed(1));
-      c.style.fill = `var(--d${dd(d)})`;
+      if (orderDirty || fc.parentNode !== fillLayer(d).bodies) fillLayer(d).bodies.appendChild(fc);
+      if (orderDirty || lc.parentNode !== lineLayer(d).bodies) lineLayer(d).bodies.appendChild(lc);
+      const cx = b.x.toFixed(1);
+      const cy = b.y.toFixed(1);
+      const r = Math.max(1, b.r).toFixed(1);
+      for (const c of [fc, lc]) {
+        c.setAttribute("cx", cx);
+        c.setAttribute("cy", cy);
+        c.setAttribute("r", r);
+      }
+      fc.style.fill = fillOf(b);
 
-      // A shared bubble pulls the skin of every bubble it belongs to
-      // around itself, so those bubbles melt into one another right there
+      // A shared bubble pulls the skin of every bubble it belongs to around
+      // itself, so those bubbles melt into one another right there
       if (b.parents.length > 1) {
         for (const pid of b.parents) {
           const p = bubbles.get(pid);
           if (!p) continue;
           const pd = depthOf.get(pid);
-          const PL = layer(pd);
-          const fill = `var(--d${dd(pd)})`;
-          const skin = SIGMA[dd(pd)] * 1.6;
-          el("circle", { cx: b.x.toFixed(1), cy: b.y.toFixed(1), r: (b.r + skin).toFixed(1), style: `fill:${fill}` }, PL.bridges);
+          const skin = sig(pd) * T.bridge;
+          const fill = fillOf(p);
           const dx = b.x - p.x;
           const dy = b.y - p.y;
           const dist = Math.hypot(dx, dy) || 1;
           const from = Math.max(0, p.r - b.r);
           const len = dist - from;
-          const stepLen = Math.max(6, b.r * 0.5);
-          const rr = b.r * 0.75 + skin * 0.5;
+          const stepLen = Math.max(5, b.r * 0.4);
+          const dots = [[b.x, b.y, b.r + skin]];
+          // Tapered neck: thinner in the middle, like a stretched drop
           for (let s = 0; s < len; s += stepLen) {
             const t = (from + s) / dist;
-            el("circle", { cx: (p.x + dx * t).toFixed(1), cy: (p.y + dy * t).toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, PL.bridges);
+            const u = s / Math.max(1, len);
+            const rr = (b.r * 0.55 + skin * 0.5) * (0.75 + 0.25 * Math.abs(1 - 2 * u));
+            dots.push([p.x + dx * t, p.y + dy * t, rr]);
+          }
+          for (const [x, y, rr] of dots) {
+            el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(pd).bridges);
+            el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(pd).bridges);
           }
         }
       }
@@ -686,21 +959,17 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
       }
       const isEditing = editing === b;
       if (!isEditing && lab.textContent !== b.text) lab.textContent = b.text;
-      lab.className = `label d${dd(d)}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
+      const col = colorOf(b);
+      const tone = col ? (luminance(col) > 0.5 ? " on-light" : " on-dark") : "";
+      lab.className = `label d${dd(d)}${tone}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
       const S = b._label || leafSize(b.text, d);
-      let left;
-      let top;
-      if (b._own && b._own.length) {
-        left = b.x - S.w / 2;
-        top = b.y - b.r + LABEL_TOP;
-      } else {
-        left = b.x - S.w / 2;
-        top = b.y - S.h / 2;
-      }
+      const left = b.x - S.w / 2;
+      const top = b._own && b._own.length ? b.y - b.r + LABEL_TOP : b.y - S.h / 2;
       lab.style.width = S.w + "px";
       lab.style.zIndex = String(d + 1);
       lab.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
     }
+    orderDirty = false;
 
     const sw = 1.2 / view.k;
     if (selected && bubbles.has(selected.id)) {
@@ -724,12 +993,65 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     }
   }
 
+  // --- Colours of the selected bubble -----------------------------------------------
+  function buildColors() {
+    colorsEl.textContent = "";
+    const add = (value, label) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "swatch" + (value ? "" : " none");
+      if (value) b.style.setProperty("--sw", value);
+      b.dataset.color = value;
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      colorsEl.appendChild(b);
+    };
+    add("", "Ohne Farbe");
+    PALETTE.forEach((c, i) => add(c, "Farbe " + (i + 1)));
+    const lab = document.createElement("label");
+    lab.title = "Eigene Farbe";
+    lab.textContent = "+";
+    const inp = document.createElement("input");
+    inp.type = "color";
+    inp.id = "custom-color";
+    inp.setAttribute("aria-label", "Eigene Farbe");
+    lab.appendChild(inp);
+    colorsEl.appendChild(lab);
+    inp.addEventListener("input", () => setColor(inp.value, true));
+    inp.addEventListener("change", () => setColor(inp.value, false));
+  }
+  let colorSnap = false;
+  function setColor(value, live) {
+    if (!selected) return;
+    if (!colorSnap) {
+      snapshot();
+      colorSnap = true;
+    }
+    if (!live) colorSnap = false;
+    selected.color = value || null;
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+  colorsEl.addEventListener("pointerdown", (e) => {
+    if (editing) e.preventDefault();
+  });
+  colorsEl.addEventListener("click", (e) => {
+    const s = e.target.closest(".swatch");
+    if (s) {
+      colorSnap = false;
+      setColor(s.dataset.color, false);
+    }
+  });
+
   function updateChrome() {
     btn.child.disabled = !selected;
     btn.del.disabled = !selected;
     btn.undo.disabled = !undoStack.length;
     btn.multi.setAttribute("aria-pressed", String(multiMode));
+    colorsEl.hidden = !selected;
     if (selected && bubbles.has(selected.id)) {
+      for (const s of colorsEl.querySelectorAll(".swatch")) s.setAttribute("aria-pressed", String((selected.color || "") === s.dataset.color));
       const path = [];
       let b = selected;
       const seen = new Set();
@@ -761,7 +1083,11 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   function serialize() {
     return {
       v: 1,
-      bubbles: [...bubbles.values()].map((b) => ({ id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents })),
+      bubbles: [...bubbles.values()].map((b) => {
+        const o = { id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents };
+        if (b.color) o.color = b.color;
+        return o;
+      }),
     };
   }
   function save() {
@@ -777,6 +1103,7 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     if (undoStack.length > 80) undoStack.shift();
     updateChrome();
   }
+  const HEX = /^#[0-9a-f]{6}$/i;
   function load(list, keep) {
     const old = bubbles;
     bubbles = new Map();
@@ -789,19 +1116,22 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
         x: Number(o.x) || 0,
         y: Number(o.y) || 0,
         parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
+        color: HEX.test(o.color || "") ? o.color : null,
         r: keep && old.get(id) ? old.get(id).r : 0,
+        vx: 0,
+        vy: 0,
       });
     }
     for (const b of bubbles.values()) b.parents = b.parents.filter((p) => p !== b.id && bubbles.has(p));
     // Break any cycle a hand-edited file might carry
-    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)) );
+    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)));
     selected = selected && bubbles.get(selected.id);
     editing = null;
     topo();
-    for (const b of bubbles.values()) if (!b.r) b.r = MIN_R[dd(depthOf.get(b.id))];
+    for (const b of bubbles.values()) if (!b.r) b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
     dirty = true;
   }
-  function settle(n = 400) {
+  function settle(n = 600) {
     for (let i = 0; i < n; i++) if (step() < 0.01 && i > 30) break;
   }
   function undo() {
@@ -814,23 +1144,23 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   }
 
   function sample() {
-    const a = make("Messestand Frankfurt", -260, 0);
-    const b = make("Showroom Offenbach", 260, 0);
+    const a = make("Messestand Frankfurt", -260, 0, [], "#f4d8c6");
+    const b = make("Showroom Offenbach", 260, 0, [], "#cfe0ef");
     make("Empfangstresen", a.x - 40, a.y + 10, [a.id]);
     make("Lounge mit Sitzinseln", a.x + 40, a.y + 50, [a.id]);
-    const m = make("Materialien", a.x - 10, a.y + 100, [a.id]);
-    make("Eiche geölt", m.x - 10, m.y, [m.id]);
+    const m = make("Materialien", a.x - 10, a.y + 100, [a.id], "#f3e5b1");
+    make("Eiche geölt", m.x - 10, m.y, [m.id], "#ddd6cb");
     make("Filz", m.x + 10, m.y + 10, [m.id]);
     make("Schaufenster", b.x - 20, b.y + 30, [b.id]);
-    make("Lichtplanung", b.x + 30, b.y + 70, [b.id]);
-    make("Markenfarben", 0, 40, [a.id, b.id]);
+    make("Lichtplanung", b.x + 30, b.y + 70, [b.id], "#e2d6f0");
+    make("Markenfarben", 0, 40, [a.id, b.id], "#d3e6cf");
   }
 
   function fit() {
     const W = innerWidth;
     const H = innerHeight;
     const top = 64;
-    const bottom = 140;
+    const bottom = selected ? 190 : 140;
     if (!bubbles.size) {
       view = { x: W / 2, y: top + (H - top - bottom) / 2, k: 1 };
       dirty = true;
@@ -950,11 +1280,11 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     return best;
   }
 
-  // What a drop would do: "move", "add" (shared) or "free" (becomes a main bubble)
+  // What a drop would do: "move", "add" (shared), "free" (becomes a main bubble) or "keep"
   function dropAction(b, t, multi) {
     if (!t) {
       if (b.parents.length > 1 && Math.hypot(b.x - drag.bx, b.y - drag.by) < b.r * 2) return "keep";
-      return multi && b.parents.length ? "keep" : b.parents.length ? "free" : "keep";
+      return multi || !b.parents.length ? "keep" : "free";
     }
     if (multi && b.parents.length && !b.parents.includes(t.id)) {
       const clash = b.parents.some((pid) => {
@@ -990,6 +1320,9 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
       b.parents = [];
     }
     topo();
+    // Let it glide on a little with the speed it was thrown at
+    b.vx = drag.vx * T.throw;
+    b.vy = drag.vy * T.throw;
     needsSave = true;
     dirty = true;
   }
@@ -999,9 +1332,25 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
   }
 
+  function startPan(e) {
+    pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false, middle: e.button === 1 };
+    if (pan.middle) svg.classList.add("is-panning");
+  }
+
+  // Middle button: no autoscroll, no paste on Linux
+  svg.addEventListener("mousedown", (e) => {
+    if (e.button === 1) e.preventDefault();
+  });
+  svg.addEventListener("auxclick", (e) => e.preventDefault());
+
   svg.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
     try { svg.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    if (e.button === 1) {
+      e.preventDefault();
+      if (!drag && !pinch) startPan(e);
+      return;
+    }
     pointers.set(e.pointerId, local(e));
     if (pointers.size === 2) {
       if (drag && drag.moved) return;
@@ -1014,8 +1363,8 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     if (pointers.size > 2) return;
     const w = toWorld(e);
     const hit = hitTest(w);
-    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, multi: false };
-    else pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
+    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, multi: false, vx: 0, vy: 0 };
+    else startPan(e);
   });
 
   svg.addEventListener("pointermove", (e) => {
@@ -1041,7 +1390,12 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
       }
       if (drag.moved) {
         const w = toWorld(e);
-        moveTree(drag.b, w.x - drag.last.x, w.y - drag.last.y);
+        const dx = w.x - drag.last.x;
+        const dy = w.y - drag.last.y;
+        moveTree(drag.b, dx, dy);
+        drag.vx = drag.vx * 0.5 + dx * 0.5;
+        drag.vy = drag.vy * 0.5 + dy * 0.5;
+        drag.t = performance.now();
         drag.last = w;
         drag.target = hitTest(w, subtree(drag.b));
         drag.multi = e.shiftKey || multiMode;
@@ -1069,29 +1423,40 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     if (drag && e.pointerId === drag.id) {
       if (drag.moved) {
         drag.multi = e.shiftKey || multiMode;
+        // A pause before letting go means no throw
+        if (performance.now() - (drag.t || 0) > 150) {
+          drag.vx = 0;
+          drag.vy = 0;
+        }
         if (e.type !== "pointercancel") drop();
         svg.classList.remove("is-dragging");
         hint(IDLE_HINT);
       } else if (e.type === "pointerup") {
-        startEdit(drag.b);
+        if (editing && editing !== drag.b) labels.get(editing.id)?.blur();
+        select(drag.b);
       }
       drag = null;
       dirty = true;
       updateChrome();
     } else if (pan && e.pointerId === pan.id) {
-      if (!pan.moved && e.type === "pointerup") select(null);
+      if (!pan.moved && !pan.middle && e.type === "pointerup") select(null);
+      svg.classList.remove("is-panning");
       pan = null;
     }
   }
   svg.addEventListener("pointerup", endPointer);
   svg.addEventListener("pointercancel", endPointer);
 
+  // Double-click: on a bubble write into it, on free space start a new one
   svg.addEventListener("dblclick", (e) => {
     const w = toWorld(e);
     const hit = hitTest(w);
+    if (hit) {
+      startEdit(hit);
+      return;
+    }
     snapshot();
-    const b = make("", w.x, w.y, hit ? [hit.id] : []);
-    startEdit(b, true);
+    startEdit(make("", w.x, w.y), true);
     needsSave = true;
   });
 
@@ -1116,8 +1481,19 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     { passive: false }
   );
 
+  function addChild(p) {
+    if (!p || !bubbles.has(p.id)) return;
+    snapshot();
+    startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
+  }
+
   window.addEventListener("keydown", (e) => {
     if (editing || e.target instanceof HTMLInputElement) return;
+    if (e.key === "Shift" && drag && drag.moved) {
+      drag.multi = true;
+      dragHint();
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       undo();
@@ -1129,12 +1505,21 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     } else if (e.key === "Enter" && selected) {
       e.preventDefault();
       startEdit(selected);
+    } else if (e.key === "Tab" && selected) {
+      e.preventDefault();
+      addChild(selected);
     } else if (e.key === "Escape") {
-      select(null);
-    }
-    if (e.key === "Shift" && drag && drag.moved) {
-      drag.multi = true;
-      dragHint();
+      if (!panel.hidden) toggleMenu(false);
+      else select(null);
+    } else if (selected && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && e.key !== " ") {
+      // Typing on a selected bubble writes into it
+      e.preventDefault();
+      snapshot();
+      selected.text += e.key;
+      const b = selected;
+      startEdit(b);
+      b._snap = true;
+      needsSave = true;
     }
   });
   window.addEventListener("keyup", (e) => {
@@ -1146,26 +1531,21 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
   // --- Tools ----------------------------------------------------------------------
   // Keep the text being edited when a tool button is pressed
-  document.getElementById("tools").addEventListener("pointerdown", (e) => {
+  $("tools").addEventListener("pointerdown", (e) => {
     if (e.target.closest("button") && editing) e.preventDefault();
   });
 
   btn.new.addEventListener("click", () => {
     if (editing) labels.get(editing.id)?.blur();
     snapshot();
-    const W = innerWidth;
-    const H = innerHeight;
-    const cx = (W / 2 - view.x) / view.k + (Math.random() - 0.5) * 40;
-    const cy = (H / 2 - view.y) / view.k + (Math.random() - 0.5) * 40;
+    const cx = (innerWidth / 2 - view.x) / view.k + (Math.random() - 0.5) * 40;
+    const cy = (innerHeight / 2 - view.y) / view.k + (Math.random() - 0.5) * 40;
     startEdit(make("", cx, cy), true);
   });
   btn.child.addEventListener("click", () => {
-    if (!selected) return;
     const p = selected;
     if (editing) labels.get(editing.id)?.blur();
-    if (!bubbles.has(p.id)) return;
-    snapshot();
-    startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
+    addChild(p);
   });
   btn.multi.addEventListener("click", () => {
     multiMode = !multiMode;
@@ -1174,8 +1554,8 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     else hint(IDLE_HINT);
   });
   btn.del.addEventListener("click", () => {
-    if (!selected) return;
     const b = selected;
+    if (!b) return;
     if (editing) labels.get(editing.id)?.blur();
     if (!bubbles.has(b.id)) return;
     snapshot();
@@ -1213,13 +1593,132 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     updateChrome();
   });
 
+  // --- Settings panel -------------------------------------------------------------
+  const panel = $("panel");
+  const menuBtn = $("menu-btn");
+  const tuneEl = $("tune");
+  const LOOK = new Set(["goo", "threshold", "sharp", "blend", "outline", "outlineW", "outlineColor", "dots", "font"]);
+  const SIZE = new Set(["size", "font"]);
+  const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : step >= 0.1 ? v.toFixed(1) : step >= 0.01 ? v.toFixed(2) : v.toFixed(3));
+  const inputs = {};
+
+  function saveTune() {
+    try {
+      localStorage.setItem(TUNE_STORE, JSON.stringify(T));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  function applyTune(key) {
+    if (SIZE.has(key)) mcache.clear();
+    if (LOOK.has(key) || key === undefined) buildFilters();
+    // Wake everything up so new forces take effect
+    for (const b of bubbles.values()) b.vx += 1e-6;
+    dirty = true;
+    saveTune();
+  }
+  function buildPanel() {
+    tuneEl.textContent = "";
+    for (const row of SPEC) {
+      if (row.length === 1) {
+        const h = document.createElement("h3");
+        h.textContent = row[0];
+        tuneEl.appendChild(h);
+        continue;
+      }
+      const [key, label, min, max, step] = row;
+      const wrap = document.createElement("div");
+      wrap.className = "tune-row";
+      const id = "tune-" + key;
+      const lab = document.createElement("label");
+      lab.htmlFor = id;
+      lab.textContent = label;
+      wrap.appendChild(lab);
+      const inp = document.createElement("input");
+      inp.id = id;
+      const type = typeof DEFAULTS[key];
+      if (type === "boolean") {
+        inp.type = "checkbox";
+        inp.addEventListener("change", () => {
+          T[key] = inp.checked;
+          applyTune(key);
+        });
+        wrap.appendChild(inp);
+      } else if (type === "string") {
+        inp.type = "color";
+        inp.addEventListener("input", () => {
+          T[key] = inp.value;
+          applyTune(key);
+        });
+        wrap.appendChild(inp);
+      } else {
+        const val = document.createElement("span");
+        val.className = "tune-val";
+        wrap.appendChild(val);
+        inp.type = "range";
+        inp.min = min;
+        inp.max = max;
+        inp.step = step;
+        inp.addEventListener("input", () => {
+          T[key] = Number(inp.value);
+          val.textContent = fmt(T[key], step);
+          applyTune(key);
+        });
+        inp._val = val;
+        inp._step = step;
+        wrap.appendChild(inp);
+      }
+      inputs[key] = inp;
+      tuneEl.appendChild(wrap);
+    }
+    syncPanel();
+  }
+  function syncPanel() {
+    for (const key in inputs) {
+      const inp = inputs[key];
+      if (inp.type === "checkbox") inp.checked = !!T[key];
+      else if (inp.type === "color") inp.value = T[key] || toHex(cssColor("--outline", "#595959"));
+      else {
+        inp.value = T[key];
+        inp._val.textContent = fmt(T[key], inp._step);
+      }
+    }
+  }
+  function toHex(c) {
+    if (HEX.test(c)) return c;
+    const m = c.match(/\d+/g);
+    if (!m) return "#595959";
+    return "#" + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
+  }
+  function toggleMenu(open) {
+    panel.hidden = !open;
+    menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) syncPanel();
+  }
+  menuBtn.addEventListener("click", () => toggleMenu(panel.hidden));
+  $("tune-reset").addEventListener("click", () => {
+    Object.assign(T, DEFAULTS);
+    mcache.clear();
+    applyTune();
+    syncPanel();
+  });
+
   // --- Theme ----------------------------------------------------------------------
-  buildFilters();
-  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", buildFilters);
-  new MutationObserver(buildFilters).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  addEventListener("resize", () => { dirty = true; });
+  const onTheme = () => {
+    buildFilters();
+    syncPanel();
+  };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", onTheme);
+  new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  addEventListener("resize", () => {
+    dirty = true;
+  });
 
   // --- Start ----------------------------------------------------------------------
+  buildFilters();
+  buildColors();
+  buildPanel();
+
   let stored = null;
   try {
     stored = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -1231,17 +1730,21 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     hint(IDLE_HINT);
   } else {
     sample();
-    hintEl.textContent = "Beispiel zum Ausprobieren: alles lässt sich umschreiben, verschieben oder löschen.";
+    hintEl.textContent = "Beispiel zum Ausprobieren: alles lässt sich umschreiben, verschieben, umfärben oder löschen.";
     setTimeout(() => hint(IDLE_HINT), 6000);
   }
   settle();
+  for (const b of bubbles.values()) {
+    b.vx = 0;
+    b.vy = 0;
+  }
   fit();
   updateChrome();
 
   function frame() {
     const energy = step();
     if (energy > 0.5) needsSave = true;
-    if (energy > 0.15 || dirty) {
+    if (energy > 0.02 || dirty) {
       render();
       dirty = false;
     }
@@ -1250,7 +1753,9 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   setInterval(() => {
     if (needsSave && !drag) save();
   }, 1000);
-  addEventListener("pagehide", () => { if (needsSave) save(); });
+  addEventListener("pagehide", () => {
+    if (needsSave) save();
+  });
   requestAnimationFrame(frame);
 })();
 </script>
