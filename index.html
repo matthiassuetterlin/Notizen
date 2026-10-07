@@ -420,18 +420,25 @@ const KEY = "gefuege.v1";
 // Gespeichert wird die Pastell-Farbe; angezeigt wird die Farbe an derselben Stelle im gewählten Farbset
 const PALETTE = ["#f2b49c", "#a6c6ea", "#d4b0e0", "#a5d6b7", "#eed585", "#efa9c0", "#b4d4cc", "#e6bf96"];
 const SETS = {
+  vave: { name: "VAVE", c: ["#FEE7C0", "#641DFF", "#7B5CFF", "#C0FEC8", "#ECFEC0", "#FEC0E1", "#C0FEFB", "#CECCFF"] },
   frisch: { name: "Frisch", c: ["#ff8a73", "#5aa9ff", "#b07cff", "#3fcf9a", "#ffc94d", "#ff6fa8", "#3fc6d6", "#ff9f4a"] },
   pastell: { name: "Pastell", c: PALETTE },
   abend: { name: "Abend", c: ["#e76f51", "#457b9d", "#7b5ea7", "#2a9d8f", "#e9c46a", "#d1495b", "#4ea8de", "#f4a261"] },
   mono: { name: "Mono", c: ["#d6d3cd", "#c2beb7", "#aeaaa3", "#e4e1db", "#ccc7bf", "#b9b4ac", "#a39e96", "#dcd8d1"] },
 };
 // Werkseinstellung = Matthias' Aussehen vom 07.10.2026; zugleich der erste Speicherplatz 01
-const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
+const DEFAULTS = { set: "vave", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
 const DEFAULT_THEME = "light";
 // Gespeicherte Einstellungen: Nummern ergeben sich aus der Reihenfolge, def = Index des Default-Eintrags
 let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME }], def: 0 };
 try { const p = JSON.parse(localStorage.getItem("notizen.presets")); if (p && Array.isArray(p.list)) PRESETS = p; } catch (e) {}
 const defaultPreset = () => PRESETS.list[PRESETS.def] || { look: { ...DEFAULTS }, theme: DEFAULT_THEME };
+// einmalig: die CI-Farben (VAVE) ersetzen Pastell als Standard, auch im gespeicherten Default
+if (!readLS("notizen.vave")) {
+  for (const p of PRESETS.list) if (p.look && p.look.set === "pastell") p.look.set = "vave";
+  try { const l = JSON.parse(localStorage.getItem("notizen.look")); if (l && l.set === "pastell") { l.set = "vave"; localStorage.setItem("notizen.look", JSON.stringify(l)); } } catch (e) {}
+  try { localStorage.setItem("notizen.presets", JSON.stringify(PRESETS)); localStorage.setItem("notizen.vave", "1"); } catch (e) {}
+}
 let T = { ...DEFAULTS };
 let savedLook = null;
 try { savedLook = JSON.parse(localStorage.getItem("notizen.look")); } catch (e) {}
@@ -1095,7 +1102,11 @@ function paintOne(k, e) {
   else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))); }
   else if (t === "p") e.setAttribute("fill", D(TC.pbub));
   else if (t === "la") { const a = area(id); if (a && e.textContent !== a.name) e.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
-  else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+  else if (t === "lr") {
+    e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+    // auf kräftigen Farben (z. B. Electric Indigo) helle Schrift
+    const r = role(id); e.style.fill = r && area(r.area) && lum(hex(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))) < 0.56 ? "#ffffff" : "";
+  }
   else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
   else if (t === "c") {
     const p = person(id2), heavy = gapsOn && p && rolesOf(p.id).length >= HEAVY;
