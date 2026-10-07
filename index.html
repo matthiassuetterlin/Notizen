@@ -146,7 +146,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   text-overflow: ellipsis;
 }
 
-#tree-btn {
+#tree-btn, #prompt-btn {
   pointer-events: auto;
   font-size: 14px;
   letter-spacing: 0.04em;
@@ -154,10 +154,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   border-bottom: 1.2px solid var(--ink);
   padding-bottom: 1px;
 }
-#tree-btn[aria-expanded="true"] { opacity: 0.55; }
+#tree-btn[aria-expanded="true"], #prompt-btn[aria-expanded="true"] { opacity: 0.55; }
 #hud { z-index: 30; }
 
-#tree {
+#tree, #prompt {
   position: fixed;
   top: 0;
   left: 0;
@@ -174,7 +174,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   -webkit-backdrop-filter: blur(8px);
   font-size: 13px;
 }
-#tree h3 {
+#tree h3, #prompt h3 {
   margin: 1rem 0.4rem 0.35rem;
   font-size: 11px;
   font-weight: 600;
@@ -182,7 +182,37 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   text-transform: uppercase;
   color: var(--ink-dim);
 }
-#tree h3:first-child { margin-top: 0; }
+#tree h3:first-child, #prompt h3:first-child { margin-top: 0; }
+#prompt .note { margin: 0.3rem 0.4rem 0.6rem; color: var(--ink-dim); line-height: 1.4; }
+#prompt textarea, #prompt input {
+  display: block;
+  width: calc(100% - 0.8rem);
+  margin: 0 0.4rem;
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+#prompt textarea:focus-visible, #prompt input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+#prompt .row { display: flex; align-items: center; gap: 0.6rem; margin: 0.5rem 0.4rem 0; }
+#prompt-run { padding: 0.45rem 0.9rem; border-radius: 8px; background: var(--ink); color: var(--bg); }
+#prompt-run:disabled { opacity: 0.45; cursor: default; }
+#prompt .keys { color: var(--ink-dim); font-size: 12px; }
+#prompt-log { margin: 0.4rem 0 0; padding: 0; list-style: none; }
+#prompt-log li { margin: 0.5rem 0.4rem 0; padding: 0.5rem 0.6rem; border-radius: 8px; background: var(--line); line-height: 1.4; }
+#prompt-log .ask { font-weight: 600; overflow-wrap: anywhere; }
+#prompt-log .answer { margin-top: 0.25rem; overflow-wrap: anywhere; }
+#prompt-log .meta { margin-top: 0.25rem; font-size: 11px; color: var(--ink-dim); }
+#prompt-log .error .answer { color: #b3412e; }
+#prompt details { margin: 1rem 0.4rem 0; }
+#prompt details summary { cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+#prompt details input { margin: 0.5rem 0 0; width: 100%; }
+#prompt details .note { margin: 0.4rem 0 0; font-size: 12px; }
 #tree ul { list-style: none; margin: 0; padding: 0; }
 #tree ul ul { margin-left: 0.55rem; padding-left: 0.6rem; border-left: 1px solid var(--line); }
 #tree .node {
@@ -421,9 +451,25 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 <header id="hud">
   <h1 id="mark">Notizen</h1>
   <button type="button" id="tree-btn" aria-expanded="false" aria-controls="tree">Struktur</button>
+  <button type="button" id="prompt-btn" aria-expanded="false" aria-controls="prompt">Prompt</button>
   <p id="crumb"></p>
 </header>
 <aside id="tree" aria-label="Struktur" hidden></aside>
+<aside id="prompt" aria-label="Prompt" hidden>
+  <h3>Prompt</h3>
+  <p class="note">Beschreib, was entstehen oder sich ändern soll, zum Beispiel „Leg eine Bubble Urlaub mit drei Unterpunkten an“ oder „Ordne die markierten Bubbles unter Materialien ein“. Rückgängig nimmt alles auf einmal zurück.</p>
+  <textarea id="prompt-text" rows="5" placeholder="Was soll passieren?"></textarea>
+  <div class="row">
+    <button type="button" id="prompt-run">Ausführen</button>
+    <span class="keys">Strg/Cmd + Enter</span>
+  </div>
+  <ul id="prompt-log"></ul>
+  <details id="prompt-key-box">
+    <summary>API-Schlüssel</summary>
+    <input type="password" id="prompt-key" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+    <p class="note">Der Prompt-Reiter fragt Claude mit deinem eigenen Anthropic-API-Schlüssel (console.anthropic.com). Er bleibt nur in diesem Browser gespeichert und wird nur an api.anthropic.com geschickt.</p>
+  </details>
+</aside>
 <button type="button" id="menu-btn" aria-label="Einstellungen" aria-expanded="false" aria-controls="panel"><span></span><span></span><span></span></button>
 <aside id="panel" aria-label="Einstellungen" hidden>
   <h2>Einstellungen</h2>
@@ -1359,8 +1405,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       x1 = Math.max(x1, b.x + b.r);
       y1 = Math.max(y1, b.y + b.r);
     }
-    const k = Math.max(0.2, Math.min(1.1, (W - 40) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
-    view = { k, x: W / 2 - ((x0 + x1) / 2) * k, y: top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * k };
+    const side = innerWidth > 640 && [$("tree"), $("prompt")].find((a) => a && !a.hidden);
+    const left = side ? side.offsetWidth : 0;
+    const k = Math.max(0.2, Math.min(1.1, (W - left - 40) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+    view = { k, x: left + (W - left) / 2 - ((x0 + x1) / 2) * k, y: top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * k };
     dirty = true;
   }
 
@@ -1745,7 +1793,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 
   const MOD_KEYS = new Set(["Shift", "Control", "Meta", "Alt"]);
   window.addEventListener("keydown", (e) => {
-    if (editing || e.target instanceof HTMLInputElement) return;
+    if (editing || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (MOD_KEYS.has(e.key) && drag && drag.moved) {
       drag.mode = modeOf(e);
       dragHint();
@@ -1776,6 +1824,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     } else if (e.key === "Escape") {
       if (!panel.hidden) toggleMenu(false);
       else if (!treeEl.hidden) toggleTree(false);
+      else if (!promptEl.hidden) togglePrompt(false);
       else select(null);
     } else if (selected && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && e.key !== " ") {
       // Typing on a selected bubble writes into it
@@ -2114,13 +2163,274 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     dirty = true;
   });
 
+
+  // --- Prompt panel (left): Claude turns a request into changes on the bubbles ---
+  const promptEl = $("prompt");
+  const promptBtn = $("prompt-btn");
+  const promptText = $("prompt-text");
+  const promptRun = $("prompt-run");
+  const promptLog = $("prompt-log");
+  const promptKey = $("prompt-key");
+  const promptKeyBox = $("prompt-key-box");
+  const KEY_STORE = "notizen-apikey-v1";
+  const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk/+esm";
+  const promptHistory = [];
+  let promptBusy = false;
+  try {
+    promptKey.value = localStorage.getItem(KEY_STORE) || "";
+  } catch (e) {
+    /* storage unavailable */
+  }
+  promptKeyBox.open = !promptKey.value;
+  promptKey.addEventListener("change", () => {
+    try {
+      localStorage.setItem(KEY_STORE, promptKey.value.trim());
+    } catch (e) {
+      /* storage unavailable */
+    }
+  });
+  function togglePrompt(open) {
+    promptEl.hidden = !open;
+    promptBtn.setAttribute("aria-expanded", String(open));
+    if (open) {
+      toggleTree(false);
+      promptText.focus();
+    }
+  }
+  promptBtn.addEventListener("click", () => togglePrompt(promptEl.hidden));
+  promptText.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      runPrompt();
+    } else if (e.key === "Escape") togglePrompt(false);
+  });
+  promptRun.addEventListener("click", () => runPrompt());
+
+  const COLOR_SLOTS = ["", "none", "1", "2", "3", "4", "5", "6", "7", "8"];
+  const PLAN_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    required: ["message", "operations"],
+    properties: {
+      message: { type: "string" },
+      operations: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["action", "id", "text", "parents", "color"],
+          properties: {
+            action: { type: "string", enum: ["create", "edit", "move", "link", "unlink", "delete"] },
+            id: { type: "string" },
+            text: { type: "string" },
+            parents: { type: "array", items: { type: "string" } },
+            color: { type: "string", enum: COLOR_SLOTS },
+          },
+        },
+      },
+    },
+  };
+  const PROMPT_SYSTEM = `You organise notes in a bubble-notes tool. Every note is a bubble with a text. A bubble can sit inside one or more parent bubbles; a bubble with several parents connects those parents (they melt together where it sits). Bubbles without parents are main bubbles.
+
+You receive the current bubbles as JSON (id, text, parents, color slot) plus the ids the user has selected, and a request, usually in German. Answer with a plan: a short message to the user and a list of operations, applied in order.
+
+Operations (fill every field; use "" or [] where a field does not apply):
+- create: a new bubble. id is a new reference of your choice (e.g. "n1") that later operations may use as a parent or target. text is the note. parents lists ids or references (empty = main bubble).
+- edit: change the text of bubble id (text "" keeps it) and/or its color.
+- move: set the complete parent list of bubble id to parents (empty = make it a main bubble). Use this to re-sort or put a bubble somewhere else.
+- link: additionally put bubble id into the bubbles in parents (creates connections between those parents).
+- unlink: take bubble id out of the bubbles in parents.
+- delete: remove bubble id; its children move up one level.
+
+color: "" keeps the color (or none for new bubbles), "none" removes it, "1" to "8" picks a color of the current palette ({PALETTE}). Children without color inherit their parent's color, so only color where it helps.
+
+Rules: keep the user's language for texts and the message. Keep texts short like notes (a few words, a line break for detail). Never make a bubble its own ancestor. Do only what was asked; leave everything else as it is. If the request is unclear or impossible, return no operations and ask or explain in the message. The message is one or two plain sentences in the user's language, no markdown.`;
+
+  let sdk = null;
+  async function anthropic() {
+    if (!sdk) sdk = await import(SDK_URL);
+    const Anthropic = sdk.default || sdk.Anthropic;
+    return new Anthropic({ apiKey: promptKey.value.trim(), dangerouslyAllowBrowser: true });
+  }
+
+  function slotOf(color) {
+    const i = palette().indexOf(color);
+    return i >= 0 ? String(i + 1) : color ? "eigene" : "";
+  }
+  function stateForPrompt() {
+    return {
+      bubbles: [...bubbles.values()].sort((a, b) => a.y - b.y || a.x - b.x).map((b) => ({ id: b.id, text: b.text, parents: b.parents, color: slotOf(b.color) })),
+      selected: [...sel].map((b) => b.id),
+    };
+  }
+
+  function logEntry(ask) {
+    const li = document.createElement("li");
+    const a = document.createElement("div");
+    a.className = "ask";
+    a.textContent = ask;
+    const ans = document.createElement("div");
+    ans.className = "answer";
+    ans.textContent = "Claude denkt nach …";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    li.append(a, ans, meta);
+    promptLog.prepend(li);
+    return { li, ans, meta };
+  }
+
+  async function runPrompt() {
+    const ask = promptText.value.trim();
+    if (!ask || promptBusy) return;
+    if (!promptKey.value.trim()) {
+      promptKeyBox.open = true;
+      promptKey.focus();
+      flash("Für den Prompt-Reiter braucht es einen Anthropic-API-Schlüssel.");
+      return;
+    }
+    promptBusy = true;
+    promptRun.disabled = true;
+    const entry = logEntry(ask);
+    try {
+      const client = await anthropic();
+      const recent = promptHistory.slice(-6).map((h) => `Anfrage: ${h.ask}\nAntwort: ${h.message}`).join("\n\n");
+      const content =
+        (recent ? `Bisherige Anfragen in dieser Sitzung:\n${recent}\n\n` : "") +
+        `Aktueller Stand:\n${JSON.stringify(stateForPrompt())}\n\nAnfrage:\n${ask}`;
+      const response = await client.beta.messages.create({
+        model: "claude-opus-5-5",
+        max_tokens: 16000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        system: PROMPT_SYSTEM.replace("{PALETTE}", palette().map((c, i) => `${i + 1} ${c}`).join(", ")),
+        output_config: { effort: "medium", format: { type: "json_schema", schema: PLAN_SCHEMA } },
+        messages: [{ role: "user", content }],
+      });
+      if (response.stop_reason === "refusal") throw new Error("Claude hat diese Anfrage abgelehnt.");
+      if (response.stop_reason === "max_tokens") throw new Error("Die Antwort war zu lang. Teil die Anfrage bitte auf.");
+      const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
+      const plan = JSON.parse(text);
+      const done = applyPlan(plan.operations || []);
+      entry.ans.textContent = plan.message || "Erledigt.";
+      entry.meta.textContent = done ? `${done} Änderung${done === 1 ? "" : "en"}, mit Rückgängig zurückzunehmen` : "Nichts geändert";
+      promptHistory.push({ ask, message: plan.message || "" });
+      promptText.value = "";
+    } catch (err) {
+      entry.li.classList.add("error");
+      const status = err && err.status;
+      entry.ans.textContent =
+        status === 401
+          ? "Der API-Schlüssel wurde nicht angenommen. Bitte unten prüfen."
+          : status === 429
+            ? "Gerade zu viele Anfragen. Bitte gleich noch einmal versuchen."
+            : err instanceof SyntaxError
+              ? "Die Antwort ließ sich nicht lesen. Bitte noch einmal versuchen."
+              : (err && err.message) || "Das hat nicht geklappt.";
+      if (status === 401) promptKeyBox.open = true;
+    } finally {
+      promptBusy = false;
+      promptRun.disabled = false;
+    }
+  }
+
+  // Apply a plan from Claude as one undo step; returns the number of changes
+  function applyPlan(ops) {
+    if (!ops.length) return 0;
+    if (editing) labels.get(editing.id)?.blur();
+    snapshot();
+    const refs = new Map();
+    const byText = (t) => {
+      const q = String(t || "").trim().toLowerCase();
+      if (!q) return null;
+      for (const b of bubbles.values()) if (b.text.trim().toLowerCase() === q) return b;
+      return null;
+    };
+    const find = (id) => refs.get(id) || bubbles.get(id) || byText(id);
+    const colorFrom = (c, keep) => (c === "" ? keep : c === "none" ? null : palette()[Number(c) - 1] || keep);
+    const asMain = (b, from) => {
+      const top = anchor(from || b);
+      if (top !== b) moveTree(b, top.x - b.x, top.y + top.r + b.r + 60 - b.y);
+    };
+    let count = 0;
+    let lastMain = null;
+    for (const op of ops) {
+      const b = op.action === "create" ? null : find(op.id);
+      if (op.action !== "create" && !b) continue;
+      const parentsOk = (list, target) =>
+        [...new Set((list || []).map(find).filter((p) => p && (!target || !subtree(target).has(p))).map((p) => p.id))];
+      if (op.action === "create") {
+        const ps = parentsOk(op.parents);
+        let x, y;
+        if (ps.length) {
+          const p = bubbles.get(ps[0]);
+          x = p.x + (Math.random() - 0.5) * 40;
+          y = p.y + p.r * 0.3 + (Math.random() - 0.5) * 20;
+        } else {
+          let x1 = -Infinity, sy = 0, n = 0;
+          for (const o of bubbles.values()) {
+            if (o.parents.length) continue;
+            x1 = Math.max(x1, o.x + o.r);
+            sy += o.y;
+            n++;
+          }
+          const base = lastMain || null;
+          x = base ? base.x + base.r + 220 : n ? x1 + 220 : 0;
+          y = base ? base.y : n ? sy / n : 0;
+        }
+        const nb = make(String(op.text || "").trim(), x, y, ps, colorFrom(op.color, null));
+        if (!ps.length) lastMain = nb;
+        refs.set(op.id, nb);
+      } else if (op.action === "edit") {
+        if (op.text && op.text.trim()) b.text = op.text.trim();
+        b.color = colorFrom(op.color, b.color);
+      } else if (op.action === "move") {
+        const from = bubbles.get(b.parents[0]);
+        const ps = parentsOk(op.parents, b);
+        if (op.parents.length && !ps.length) continue;
+        const had = new Set(b.parents);
+        b.parents = ps;
+        topo();
+        if (!ps.length) {
+          if (from) asMain(b, from);
+        } else if (ps.length === 1 && !had.has(ps[0])) {
+          const t = bubbles.get(ps[0]);
+          moveTree(b, t.x + (Math.random() - 0.5) * 20 - b.x, t.y + t.r * 0.25 - b.y);
+        }
+      } else if (op.action === "link") {
+        for (const id of parentsOk(op.parents, b)) if (!b.parents.includes(id)) b.parents.push(id);
+      } else if (op.action === "unlink") {
+        const out = new Set(parentsOk(op.parents));
+        const from = bubbles.get(b.parents[0]);
+        b.parents = b.parents.filter((id) => !out.has(id));
+        topo();
+        if (!b.parents.length && from) asMain(b, from);
+      } else if (op.action === "delete") {
+        remove(b);
+      } else continue;
+      if (b) b.vx = b.vy = 0;
+      topo();
+      count++;
+    }
+    topo();
+    mcache.clear();
+    settle(300);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+    fit();
+    return count;
+  }
+
   // --- Structure panel (left) -----------------------------------------------------
   const treeEl = $("tree");
   const treeBtn = $("tree-btn");
   function toggleTree(open) {
     treeEl.hidden = !open;
     treeBtn.setAttribute("aria-expanded", String(open));
-    if (open) renderTree();
+    if (open) {
+      togglePrompt(false);
+      renderTree();
+    }
   }
   treeBtn.addEventListener("click", () => toggleTree(treeEl.hidden));
 
@@ -2194,7 +2504,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   function focusOn(b) {
     const W = innerWidth;
     const H = innerHeight;
-    const left = treeEl.hidden ? 0 : treeEl.offsetWidth;
+    const left = !treeEl.hidden ? treeEl.offsetWidth : !promptEl.hidden ? promptEl.offsetWidth : 0;
     const k = view.k;
     view.x = left + (W - left) / 2 - b.x * k;
     view.y = H / 2 - 40 - b.y * k;
