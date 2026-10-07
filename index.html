@@ -588,7 +588,8 @@ input.switch:checked::after { transform: translateX(16px); }
     flow: 0.4, // how far colours and grey tones run into each other
     saturation: 1, // how strong the colours are
     opacity: 1, // how solid the fill is
-    line: 4, // contour width, 0 = none
+    lineOn: true, // contour on or off
+    line: 4, // contour width
     lineColor: "", // contour colour, empty = automatic
     shade: 0, // 3D: light and shadow (0 = flat)
     scale: 1, // size of empty bubbles
@@ -612,7 +613,7 @@ input.switch:checked::after { transform: translateX(16px); }
     t.blend = 0.5 + 90 * t.flow * t.flow;
     t.outlineColor = t.lineColor;
     t.threshold = 0.62 - 0.12 * t.merge;
-    t.outline = t.line > 0;
+    t.outline = t.lineOn && t.line > 0;
     t.outlineW = t.line;
     t.friction = 0.55 + 0.35 * t.glide;
     t.throw = 0.2 + 0.8 * t.glide;
@@ -634,7 +635,8 @@ input.switch:checked::after { transform: translateX(16px); }
     ["round", "Runde Bubbles"],
     ["roundness", "Rundung der freien Form", 0, 1, 0.01],
     ["merge", "Verschmelzen", 0, 1, 0.01],
-    ["line", "Kontur", 0, 8, 0.1],
+    ["lineOn", "Kontur"],
+    ["line", "Konturstärke", 0.3, 10, 0.1],
     ["lineColor", "Konturfarbe"],
     ["shade", "Plastisch (3D)", 0, 1, 0.05],
     ["scale", "Größe leerer Bubbles", 0.6, 1.8, 0.05],
@@ -2174,8 +2176,8 @@ input.switch:checked::after { transform: translateX(16px); }
   const panel = $("panel");
   const menuBtn = $("menu-btn");
   const tuneEl = $("tune");
-  const LOOK = new Set(["merge", "flow", "line", "lineColor", "font", "family", "ink", "shade", "saturation", "opacity", "dots"]);
-  const SIZE = new Set(["font", "family", "grow", "weight", "line"]);
+  const LOOK = new Set(["merge", "flow", "line", "lineOn", "lineColor", "font", "family", "ink", "shade", "saturation", "opacity", "dots"]);
+  const SIZE = new Set(["font", "family", "grow", "weight", "line", "lineOn"]);
   const inputs = {};
 
   function saveTune() {
@@ -2323,10 +2325,11 @@ input.switch:checked::after { transform: translateX(16px); }
       } else {
         inp.value = T[key];
         inp._val.textContent = show(key, T[key]);
-        if (key === "roundness") {
-          // Only matters when bubbles are not round
-          inp.disabled = !!T.round;
-          inp.parentElement.style.opacity = T.round ? "0.45" : "";
+        // Sliders that only matter while their switch says so
+        const off = (key === "roundness" && T.round) || (key === "line" && !T.lineOn);
+        if (key === "roundness" || key === "line") {
+          inp.disabled = off;
+          inp.parentElement.style.opacity = off ? "0.45" : "";
         }
       }
     }
