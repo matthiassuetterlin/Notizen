@@ -272,7 +272,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .flag .tip { font-family: var(--text); font-size: 11px; font-weight: 500; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; opacity: 0; transition: opacity .15s; pointer-events: none; }
 .flag:hover .tip, .flag.on .tip { opacity: 1; }
 .flag:hover .pen { filter: brightness(1.08); }
-.lnk-t { font-family: var(--mono); font-size: 10px; fill: var(--ink-dim); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+.lnk-t { font-family: var(--label-font); font-weight: 600; font-size: 10.5px; fill: var(--ink-dim); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
 
 @media (max-width: 760px) {
   .top { flex-wrap: wrap; left: 10px; right: 10px; top: 10px; gap: 8px; }
@@ -630,10 +630,27 @@ function layoutKreise(L) {
   const data = { children: S.areas.map((a) => ({ a, children: S.roles.filter((r) => r.area === a.id).map((r) => ({ r })) })) };
   const root = d3.hierarchy(data, (d) => d.children).sum((d) => (d.r ? 1 + 0.3 * d.r.acc.length : d.a && !(d.children || []).length ? 1.4 : 0));
   const side = 300 * Math.sqrt(S.roles.length + S.areas.length + 1);
-  d3.pack().size([side, side]).padding((d) => (d.depth === 0 ? 58 : d.children && d.children.length > 1 ? Math.max(T.gap, 4) : 32))(root);
+  d3.pack().size([side, side]).padding((d) => (d.depth === 0 ? 80 : d.children && d.children.length > 1 ? Math.max(T.gap, 4) : 32))(root);
   // selbst angeordnete Bereiche: ganzer Bereich samt Rollen an die gespeicherte Stelle
   const pin = posOf("kreise").a, shift = new Map();
   for (const n of root.children || []) { const q = pin[n.data.a.id]; if (q) shift.set(n.data.a.id, [q[0] - (n.x - side / 2), q[1] - (n.y - side / 2)]); }
+  // nichts darf sich überschneiden: Bereiche (mit Platz für den Titel) sanft auseinanderschieben
+  const tops = (root.children || []).map((n) => { const sh = shift.get(n.data.a.id) || [0, 0]; return { id: n.data.a.id, x: n.x + sh[0], y: n.y + sh[1], r: n.r + 34 }; });
+  for (let it = 0; it < 80; it++) {
+    let moved = false;
+    for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) {
+      const A = tops[i], B = tops[j];
+      let dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
+      const need = A.r + B.r + 24;
+      if (d >= need) continue;
+      if (d < 0.01) { dx = 1; dy = 0; d = 1; }
+      const push = (need - d) / 2 + 0.5;
+      A.x -= (dx / d) * push; A.y -= (dy / d) * push; B.x += (dx / d) * push; B.y += (dy / d) * push;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  for (const t of tops) { const n = root.children.find((c) => c.data.a.id === t.id); shift.set(t.id, [t.x - n.x, t.y - n.y]); }
   for (const n of root.descendants()) {
     if (!n.depth) continue;
     const sh = shift.get((n.data.a || area(n.data.r.area)).id);
@@ -670,8 +687,7 @@ function runSim(nodes, seed, setup, ticks = 320) {
 }
 
 function layoutMenschen(L) {
-  const pin = posOf("menschen").p;
-  const P = S.people.map((p) => ({ key: "p|" + p.id, id: p.id, r: personR(p), kind: "p", ...(pin[p.id] ? { fx: pin[p.id][0], fy: pin[p.id][1] } : {}) }));
+  const P = S.people.map((p) => ({ key: "p|" + p.id, id: p.id, r: personR(p), kind: "p" }));
   const byId = new Map(P.map((n) => [n.id, n]));
   const R = S.roles.map((r) => ({ key: "r|" + r.id, id: r.id, r: roleFitR(r), kind: "r", free: !r.people.length }));
   const links = [];
@@ -1041,7 +1057,6 @@ function renderRings() {
   if (selKey) {
     let k = selKey;
     if (sel.t === "area" && lens === "netz") { k = null; for (const r of S.roles) if (r.area === sel.id) want.push({ k: "r|" + r.id, c: TC.accent, w: 1.3, pad: 6, dash: "3 4" }); }
-    if (sel.t === "person" && lens === "menschen") for (const r of rolesOf(sel.id)) want.push({ k: "r|" + r.id, c: TC.accent, w: 1.3, pad: 3, dash: "3 4" });
     if (sel.t === "person" && lens !== "menschen") for (const r of rolesOf(sel.id)) want.push({ k: `c|${r.id}|${sel.id}`, c: TC.accent, w: 1.6, pad: 3, chip: true });
     if (k) want.push({ k, c: TC.accent, w: 1.6, pad: 4 });
   }
@@ -1178,7 +1193,7 @@ function planDrop(pt, shift) {
     if (inside && Math.hypot(pt[0] - inside.x, pt[1] - inside.y) < inside.r) return { text: "Auf eine andere Rolle ziehen" };
     return { text: `${p.name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== p.id); } };
   }
-  if (t === "p") return { text: "Person mit ihren Rollen frei anordnen" };
+  if (t === "p") return { text: "Person verschieben" };
   if (t === "a") return { text: "Bereich frei anordnen" };
   return { text: "" };
 }
@@ -1230,10 +1245,10 @@ function endDrag(e, cancel) {
     return;
   }
   idleHint();
-  if (d.t === "a" || d.t === "p") {
+  if (d.t === "a") {
     // Position merken, damit die eigene Anordnung bleibt (auch nach dem Neuladen)
-    const id = d.k.split("|")[1], v = cur.get(d.t === "a" ? (lens === "netz" ? "la|" : "a|") + id : "p|" + id);
-    if (v) { const pos = posOf(lens); change(() => { (d.t === "a" ? pos.a : pos.p)[id] = [Math.round(v.x), Math.round(v.y)]; }, { dur: 450 }); return; }
+    const id = d.k.split("|")[1], v = cur.get((lens === "netz" ? "la|" : "a|") + id);
+    if (v) { const pos = posOf(lens); change(() => { pos.a[id] = [Math.round(v.x), Math.round(v.y)]; }, { dur: 450 }); return; }
   }
   drag = d;
   const plan = !cancel && planDrop(worldPoint(e), e.shiftKey);
