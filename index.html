@@ -441,7 +441,18 @@ const SETS = {
 const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
 const DEFAULT_THEME = "light";
 // Gespeicherte Einstellungen: jeder Eintrag trägt seinen Namen (label) fest mit sich, auch beim Verschieben; def = Index des Default-Eintrags
-let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME, label: "01" }], def: 0 };
+// Vorgabe für neue Besucher: Matthias' sieben Einstellungen vom 07.10.2026, Start mit „Dark & Fruity“
+const L0 = (o) => ({ ...DEFAULTS, ...o });
+const BUILTIN_PRESETS = [
+  { label: "Fruity Heaven", theme: "light", look: L0({ sat: 1.5, shade: 0, outline: false, line: 0.3, edge: 0, gap: 50, dots: false }) },
+  { label: "Dark & Fruity", theme: "dark", look: L0({ sat: 1.5, shade: 0, outline: false, line: 0.3, edge: 0, gap: 50, dots: false }) },
+  { label: "Buttons", theme: "light", look: L0({ shade: 1, line: 2.1 }) },
+  { label: "Minesweeper", theme: "light", look: L0({ set: "mono", shade: 1, line: 0.3, edge: 0 }) },
+  { label: "Night Golfing", theme: "dark", look: L0({ shade: 1, line: 2.1 }) },
+  { label: "CI Contours", theme: "light", look: L0({ blend: 20, shade: 0, line: 2.5, lineColor: "#CECCFF", edge: 0 }) },
+  { label: "Glowing Dark", theme: "dark", look: L0({ blend: 20, shade: 0, line: 2, edge: 0 }) },
+];
+let PRESETS = { list: BUILTIN_PRESETS.map((p) => ({ ...p, look: { ...p.look } })), def: 1 };
 try { const p = JSON.parse(localStorage.getItem("notizen.presets")); if (p && Array.isArray(p.list)) PRESETS = p; } catch (e) {}
 // ältere Einträge ohne festen Namen: Nummer nach bisheriger Position (+ ggf. vergebener Name)
 if (PRESETS.list.some((p) => !p.label)) {
