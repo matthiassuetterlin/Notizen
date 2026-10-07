@@ -565,6 +565,8 @@ function readTheme() {
   const g = (n) => cs.getPropertyValue(n).trim();
   TC = { d0: g("--d0"), pfill: g("--pfill"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn"), accent: g("--accent") };
   TC.dark = lum(hex(TC.d0)) < 0.4;
+  // Personen in „Menschen“: hell im Grau der Hintergrundpunkte, dunkel weiß (bessere Lesbarkeit)
+  TC.pbub = TC.dark ? TC.pfill : g("--dot");
   buildFilter();
   $("#arrow path").setAttribute("stroke", TC.dim);
   $("#arrowHot path").setAttribute("stroke", TC.accent);
@@ -1091,7 +1093,7 @@ function paintOne(k, e) {
   if (t === "a") { const a = area(id); if (a) e.setAttribute("fill", D(tint(col(a.color), 0.72))); }
   else if (t === "h") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), 0.5))); }
   else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))); }
-  else if (t === "p") e.setAttribute("fill", D(TC.pfill));
+  else if (t === "p") e.setAttribute("fill", D(TC.pbub));
   else if (t === "la") { const a = area(id); if (a && e.textContent !== a.name) e.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
   else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
   else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
