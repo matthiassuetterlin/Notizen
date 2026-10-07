@@ -6,7 +6,7 @@
 <title>Notizen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet" />
 <style>
 /* Layout: one endless canvas. Bubbles melt under SVG goo filters (like the
    website's grid); labels ride the same pan/zoom; HUD on top, tools below,
@@ -25,8 +25,8 @@
   --panel: rgba(255, 255, 255, 0.94);
   --line: rgba(0, 0, 0, 0.14);
   --display: "Playfair Display", "Times New Roman", Times, serif;
-  --text: Helvetica, "Helvetica Neue", Arial, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
   --label-font: var(--text);
   --fs: 1;
 }
@@ -106,6 +106,27 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 .label.on-light { color: var(--ink-l, rgba(44, 40, 36, 0.86)); caret-color: var(--ink-l, rgba(44, 40, 36, 0.86)); }
 .label.on-dark { color: var(--ink-d, rgba(250, 247, 242, 0.92)); caret-color: var(--ink-d, rgba(250, 247, 242, 0.92)); }
 #tree .node.drop-into { outline: 1.5px solid var(--ink); outline-offset: -1px; }
+#tree .node.drop-link { outline: 1.5px dashed var(--ink); outline-offset: -1px; background: var(--line); }
+#tree .node { touch-action: none; -webkit-user-select: none; user-select: none; }
+#tree.dragging, #tree.dragging * { cursor: grabbing; }
+.tree-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  max-width: 300px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.tree-ghost .what { display: block; font-weight: 600; }
+.tree-ghost .how { display: block; font-size: 12px; opacity: 0.8; }
+.tree-ghost.link .how { opacity: 1; }
 .tune-choice .ink-dot { display: inline-block; width: 0.7em; height: 0.7em; margin-right: 0.4em; border-radius: 50%; vertical-align: -0.05em; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.5); }
 #tree .drop-root { margin: 0.6rem 0.4rem 0; padding: 0.5rem; border: 1px dashed var(--ink-dim); border-radius: 8px; text-align: center; color: var(--ink-dim); font-size: 12px; }
 #tree .drop-root.drop-into { border-color: var(--ink); color: var(--ink); }
@@ -538,10 +559,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     ["outline", "Kontur zeigen"],
     ["outlineW", "Konturstärke", 0.2, 10, 0.1],
     ["outlineColor", "Konturfarbe"],
-    ["palette", "Farbset der Bubbles", [["pastell", "Pastell"], ["kraeftig", "Kräftig"], ["erdig", "Erdig"]]],
+    ["palette", "Farbset der Bubbles", [["pastell", "Pastell"], ["rose", "Rosé"], ["kueste", "Küste"]]],
     ["dots", "Punktraster im Hintergrund"],
     ["Text"],
-    ["family", "Schrift", [["sans", "Helvetica"], ["serif", "Playfair"], ["mono", "Plex Mono"]]],
+    ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
     ["ink", "Schriftfarbe", [["graphit", "Graphit"], ["tinte", "Tinte"], ["sepia", "Sepia"]]],
     ["font", "Schriftgröße", 0.7, 1.8, 0.05],
   ];
@@ -582,9 +603,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   // Bubble colour sets; switching set recolours bubbles slot by slot
   const PALETTES = {
     pastell: ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"],
-    kraeftig: ["#e8794f", "#e9b740", "#6fb37b", "#4f8fcf", "#9b7fd0", "#d9658a", "#a08d74", "#3fa3a0"],
-    erdig: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"],
+    // Dusty rose, clay and sage (after the "Dusty Sage" and "Chalky Coral" moods)
+    rose: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"],
+    // Mint, sea blue, peach and sand (after the "Serene Coastline" and "Sunset Glow" moods)
+    kueste: ["#d1e8e2", "#a9d6e5", "#9cc5c9", "#6fa8b0", "#ffe8d6", "#ffcf8f", "#d9b39c", "#e9e4d8"],
   };
+  // Earlier sets, so saved colours and settings move over slot by slot
+  const LEGACY = {
+    kraeftig: { to: "kueste", colors: ["#e8794f", "#e9b740", "#6fb37b", "#4f8fcf", "#9b7fd0", "#d9658a", "#a08d74", "#3fa3a0"] },
+    erdig: { to: "rose", colors: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"] },
+  };
+  if (LEGACY[T.palette]) T.palette = LEGACY[T.palette].to;
   const palette = () => PALETTES[T.palette] || PALETTES.pastell;
   // Text colour sets: one tone for light grounds, one for dark grounds
   const INKS = {
@@ -2023,6 +2052,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
 
   function setAll(values) {
+    if (values && LEGACY[values.palette]) values = { ...values, palette: LEGACY[values.palette].to };
     if (values && values.palette && values.palette !== T.palette) recolor(T.palette, values.palette);
     Object.assign(T, clean(values));
     mcache.clear();
@@ -2140,7 +2170,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       bt.type = "button";
       bt.dataset.id = b.id;
       bt.dataset.via = via || "";
-      bt.draggable = true;
       if (sel.has(b)) bt.setAttribute("aria-current", "true");
       const dot = mk("span", "dot");
       const col = colorOf(b);
@@ -2171,7 +2200,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (roots.length) treeEl.appendChild(branch(roots, []));
     else treeEl.appendChild(mk("p", "empty", "Noch keine Bubbles. Doppelklick auf die Fläche legt eine an."));
 
-    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble");
+    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble · Shift beim Ziehen: zusätzlich unter einen zweiten Punkt");
     rootDrop.dataset.root = "1";
     treeEl.appendChild(rootDrop);
 
@@ -2202,7 +2231,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
   treeEl.addEventListener("click", (e) => {
     const bt = e.target.closest(".node");
-    if (!bt) return;
+    if (!bt || treeClickBlock) return;
     const b = bubbles.get(bt.dataset.id);
     if (!b) return;
     if (e.shiftKey) toggleSelect(b);
@@ -2211,53 +2240,100 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       if (innerWidth > 640) focusOn(b);
     }
   });
-  // Drag in the tree: drop on an entry to put it in there (Shift: in addition),
-  // drop on the dashed field to make it a main bubble. The canvas follows.
+  // Drag in the tree: drop on an entry to put it in there; with Shift it stays
+  // where it is and is linked there as well (one bubble under both). Drop on the
+  // dashed field to make it a main bubble. The canvas follows.
   let treeDrag = null;
-  const dropTarget = (e) => e.target.closest(".node, .drop-root");
-  treeEl.addEventListener("dragstart", (e) => {
-    const bt = e.target.closest(".node");
-    const b = bt && bubbles.get(bt.dataset.id);
-    if (!b) return;
-    treeDrag = { b, via: bt.dataset.via || null };
-    e.dataTransfer.effectAllowed = "move";
-    try {
-      e.dataTransfer.setData("text/plain", name(b));
-    } catch (err) {
-      /* ignore */
-    }
-  });
+  let treeClickBlock = false;
   function treeDropOk(t) {
     if (!treeDrag || !t) return false;
     if (t.dataset.root) return treeDrag.b.parents.length > 0;
     const target = bubbles.get(t.dataset.id);
     return !!target && !subtree(treeDrag.b).has(target) && !treeDrag.b.parents.includes(target.id);
   }
-  treeEl.addEventListener("dragover", (e) => {
-    const t = dropTarget(e);
-    for (const n of treeEl.querySelectorAll(".drop-into")) if (n !== t) n.classList.remove("drop-into");
-    if (!treeDropOk(t)) return;
+  function treeDragShow() {
+    const d = treeDrag;
+    if (!d || !d.ghost) return;
+    const t = d.target;
+    const ok = treeDropOk(t);
+    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) if (n !== t) n.classList.remove("drop-into", "drop-link");
+    const link = d.shift && d.b.parents.length > 0 && ok && !t.dataset.root;
+    if (t) {
+      t.classList.toggle("drop-into", ok && !link);
+      t.classList.toggle("drop-link", link);
+    }
+    const target = ok && !t.dataset.root ? bubbles.get(t.dataset.id) : null;
+    d.ghost.querySelector(".what").textContent = name(d.b);
+    d.ghost.querySelector(".how").textContent = !ok
+      ? d.b.parents.length
+        ? "Shift halten: zusätzlich unter einen weiteren Punkt"
+        : "Auf einen Punkt ziehen"
+      : t.dataset.root
+        ? "→ eigene Haupt-Bubble"
+        : link
+          ? `+ auch unter »${name(target)}« (bleibt unter »${name(bubbles.get(d.via) || bubbles.get(d.b.parents[0]))}«)`
+          : `→ nach »${name(target)}«${d.b.parents.length ? " · mit Shift: zusätzlich" : ""}`;
+    d.ghost.classList.toggle("link", link);
+  }
+  treeEl.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const bt = e.target.closest(".node");
+    const b = bt && bubbles.get(bt.dataset.id);
+    if (!b) return;
+    treeDrag = { b, via: bt.dataset.via || null, x: e.clientX, y: e.clientY, id: e.pointerId, shift: e.shiftKey, ghost: null, target: null };
+  });
+  window.addEventListener("pointermove", (e) => {
+    const d = treeDrag;
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.ghost) {
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+      d.ghost = document.createElement("div");
+      d.ghost.className = "tree-ghost";
+      d.ghost.innerHTML = '<span class="what"></span><span class="how"></span>';
+      document.body.appendChild(d.ghost);
+      treeEl.classList.add("dragging");
+    }
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    t.classList.add("drop-into");
+    d.shift = e.shiftKey;
+    d.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 10}px)`;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    d.target = under && treeEl.contains(under) ? under.closest(".node, .drop-root") : null;
+    treeDragShow();
+    // Scroll the list when dragging near its edges
+    const r = treeEl.getBoundingClientRect();
+    if (e.clientY < r.top + 40) treeEl.scrollTop -= 12;
+    else if (e.clientY > r.bottom - 40) treeEl.scrollTop += 12;
   });
-  treeEl.addEventListener("dragleave", (e) => {
-    const t = dropTarget(e);
-    if (t && !t.contains(e.relatedTarget)) t.classList.remove("drop-into");
-  });
-  treeEl.addEventListener("dragend", () => {
+  for (const k of ["keydown", "keyup"])
+    window.addEventListener(k, (e) => {
+      if (treeDrag && treeDrag.ghost && e.key === "Shift") {
+        treeDrag.shift = k === "keydown";
+        treeDragShow();
+      }
+    });
+  function treeDragEnd() {
+    const d = treeDrag;
     treeDrag = null;
-    for (const n of treeEl.querySelectorAll(".drop-into")) n.classList.remove("drop-into");
-  });
-  treeEl.addEventListener("drop", (e) => {
-    const t = dropTarget(e);
-    if (!treeDropOk(t)) return;
-    e.preventDefault();
-    const { b, via } = treeDrag;
-    treeDrag = null;
+    if (!d || !d.ghost) return null;
+    d.ghost.remove();
+    treeEl.classList.remove("dragging");
+    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) n.classList.remove("drop-into", "drop-link");
+    treeClickBlock = true;
+    setTimeout(() => (treeClickBlock = false), 0);
+    return d;
+  }
+  window.addEventListener("pointercancel", treeDragEnd);
+  window.addEventListener("pointerup", (e) => {
+    if (!treeDrag || e.pointerId !== treeDrag.id) return;
+    const shift = treeDrag.shift || e.shiftKey;
+    const t = treeDrag.target;
+    const ok = treeDropOk(t);
+    const d = treeDragEnd();
+    if (!d || !ok) return;
+    const { b, via } = d;
     snapshot();
     if (t.dataset.root) {
-      // Out of the bubble it was dragged from (or out of all), next to its old place
+      // Out of the bubble it was dragged from (or out of all), below its old place
       const from = bubbles.get(via) || bubbles.get(b.parents[0]);
       b.parents = via ? b.parents.filter((id) => id !== via) : [];
       if (b.parents.length) {
@@ -2269,11 +2345,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       }
     } else {
       const target = bubbles.get(t.dataset.id);
-      if (e.shiftKey && b.parents.length) b.parents.push(target.id);
+      if (shift && b.parents.length) b.parents.push(target.id);
       else if (via && b.parents.includes(via)) b.parents = b.parents.map((id) => (id === via ? target.id : id));
       else b.parents = [target.id];
       if (b.parents.length === 1) moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
-      flash(b.parents.length > 1 ? `»${name(b)}« gehört jetzt auch zu »${name(target)}«` : `»${name(b)}« liegt jetzt in »${name(target)}«`);
+      flash(b.parents.length > 1 ? `»${name(b)}« steht jetzt auch unter »${name(target)}« und verbindet beide` : `»${name(b)}« liegt jetzt in »${name(target)}«`);
     }
     topo();
     b.vx = 0;
@@ -2281,6 +2357,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     select(b);
     needsSave = true;
     dirty = true;
+    updateChrome();
   });
 
   treeEl.addEventListener("dblclick", (e) => {
@@ -2305,6 +2382,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
   if (stored && Array.isArray(stored.bubbles)) {
     load(stored.bubbles, false);
+    // Colours from the earlier sets move to the sets that replaced them
+    for (const b of bubbles.values())
+      for (const k in LEGACY) {
+        const i = b.color ? LEGACY[k].colors.indexOf(b.color.toLowerCase()) : -1;
+        if (i >= 0) {
+          b.color = PALETTES[LEGACY[k].to][i];
+          needsSave = true;
+        }
+      }
     hint(IDLE_HINT);
   } else {
     sample();
