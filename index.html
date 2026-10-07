@@ -155,7 +155,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .pop button.item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 8px; }
 .pop button.item:hover { background: var(--hover); }
 .pop .ok { padding: 8px; color: var(--ink-dim); }
-#menuPop { width: 320px; }
+#menuPop { width: 375px; }
 .set { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 5px 8px; font-size: 13px; }
 .set output { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
 .set input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
@@ -201,7 +201,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 
 /* ---------- detail panel ---------- */
 .panel {
-  position: fixed; top: 66px; right: calc(16px + var(--side, 0px)); bottom: 16px; width: var(--panelW, 340px); z-index: 4;
+  position: fixed; top: 66px; right: calc(16px + var(--side, 0px)); bottom: 16px; width: var(--panelW, 425px); z-index: 4;
   border-radius: 14px; padding: 0; overflow: hidden; display: flex; flex-direction: column;
   transform: translateX(calc(100% + 30px)); opacity: 0; visibility: hidden;
   transition: transform 0.35s cubic-bezier(.2,.8,.2,1), right 0.35s cubic-bezier(.2,.8,.2,1), opacity .25s, visibility 0s .35s;
@@ -298,7 +298,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .legend.on { display: flex; }
 .legend { transition: right .35s cubic-bezier(.2,.8,.2,1); }
 .legend { right: calc(16px + var(--side, 0px)); }
-.panel.open ~ .legend { right: calc(42px + var(--panelW, 340px) + var(--side, 0px)); }
+.panel.open ~ .legend { right: calc(42px + var(--panelW, 425px) + var(--side, 0px)); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 
 /* svg text */
@@ -1599,7 +1599,9 @@ function select(s, focusName) {
 let editPrev = null;
 const panel = $("#panel"), panelBody = $("#panelBody");
 // Bearbeiten-Fenster: wie das Menü an der linken Kante breiter ziehbar, Inhalt zoombar
-let panelW = +readLS("notizen.panelW") || 340, panelZ = +readLS("notizen.panelZ") || 1;
+// einmalig 25 % breiter, auch wenn schon eine eigene Breite gespeichert ist (07.10.2026)
+const WIDE = !readLS("notizen.wide25"); writeLS("notizen.wide25", "1");
+let panelW = (+readLS("notizen.panelW") || 340) * (WIDE ? 1.25 : 1), panelZ = +readLS("notizen.panelZ") || 1;
 const PZ = () => `<span class="pz"><button data-pz="-1" aria-label="Verkleinern" title="Verkleinern">−</button><button data-pz="0" title="Zurücksetzen">${Math.round(panelZ * 100)}%</button><button data-pz="1" aria-label="Vergrößern" title="Vergrößern">+</button></span>`;
 function applyPanel() {
   panelW = Math.max(280, Math.min(innerWidth * 0.7, panelW)); panelZ = Math.max(0.7, Math.min(1.8, Math.round(panelZ * 100) / 100));
@@ -1888,7 +1890,7 @@ $("#addPop").addEventListener("click", (e) => {
 $("#menuBtn").addEventListener("click", () => $("#menuPop").classList.toggle("open"));
 // Menü: Breite und Zoom merken
 const menuPop = $("#menuPop"), menuBody = $("#menuBody");
-let menuW = +readLS("notizen.menuW") || 300, menuZ = +readLS("notizen.menuZ") || 1;
+let menuW = (+readLS("notizen.menuW") || 300) * (WIDE ? 1.25 : 1), menuZ = +readLS("notizen.menuZ") || 1;
 function applyMenu() {
   menuW = Math.max(260, Math.min(innerWidth * 0.8, menuW)); menuZ = Math.max(0.7, Math.min(1.8, Math.round(menuZ * 100) / 100));
   if (innerWidth >= 760) menuPop.style.width = menuW + "px"; else menuPop.style.width = "";
