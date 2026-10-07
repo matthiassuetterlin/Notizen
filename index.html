@@ -132,7 +132,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .ibtn:hover { background: var(--seg); }
 .ibtn[aria-pressed="true"] { color: var(--warn); }
 #linesBtn[aria-pressed="true"] { color: var(--ink); }
-.lsw { width: 24px; height: 14px; border-radius: 999px; background: var(--seg); position: relative; transition: background .2s; flex: none; }
+.lsw { width: 24px; height: 14px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); position: relative; transition: background .2s; flex: none; }
 .lsw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
 #linesBtn[aria-pressed="true"] .lsw { background: var(--accent); }
 #linesBtn[aria-pressed="true"] .lsw::after { transform: translateX(10px); }
@@ -383,7 +383,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
   </div>
   <div class="right">
     <button id="flagsBtn" class="ibtn pill" title="Fähnchen: offene Punkte, die noch geklärt werden müssen"><svg class="flag-ico" width="13" height="14" viewBox="0 0 13 14" aria-hidden="true"><path d="M2 13 V1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2.6 1.6 L11.5 4.4 L2.6 7.4 Z" fill="currentColor"/></svg><span class="lt">Fähnchen</span><span id="flagCount" class="badge">0</span></button>
-    <button id="linesBtn" class="ibtn pill" aria-pressed="false" title="Alle Verbindungen einblenden"><span class="lsw" aria-hidden="true"></span><span class="lt">Linien</span></button>
+    <button id="linesBtn" class="ibtn pill" aria-pressed="false" title="Alle Verbindungen einblenden; aus: nur die der Auswahl"><span class="lsw" aria-hidden="true"></span><span class="lt">Alle Verbindungen</span></button>
     <button id="gapsBtn" class="ibtn pill" aria-pressed="false" title="Lücken und Überlast zeigen"><span class="lt">Lücken</span><span id="gapCount" class="badge">0</span></button>
     <button id="addBtn" class="ibtn pill" title="Neu anlegen">+</button>
     <button id="themeBtn" class="ibtn pill" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8 A6.2 6.2 0 0 1 8 14.2 Z" fill="currentColor"/></svg></button>
@@ -793,7 +793,16 @@ function layoutKreise(L) {
 
 let layoutVersion = 0;
 let allLinks = readLS("notizen.allLinks") === "1"; // Schalter „Linien“ oben: alle Verbindungen ohne Auswahl zeigen
-function linkVisible(l) { return allLinks || linkPopId === l.id || (sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id)); }
+// Rollen der Auswahl: Rolle selbst, alle Rollen einer Person oder eines Bereichs
+function selRoleIds() {
+  if (!sel) return null;
+  if (sel.t === "role") return new Set([sel.id]);
+  if (sel.t === "person") return new Set(rolesOf(sel.id).map((r) => r.id));
+  if (sel.t === "area") return new Set(S.roles.filter((r) => r.area === sel.id).map((r) => r.id));
+  return null;
+}
+const linkOfSel = (l) => { const ids = selRoleIds(); return !!ids && (ids.has(l.from) || ids.has(l.to)); };
+function linkVisible(l) { return allLinks || linkPopId === l.id || linkOfSel(l); }
 function runSim(nodes, seed, setup, ticks = 320) {
   // gleiche Daten, gleiche Karte: nur neu rechnen, wenn sich etwas geändert hat
   if (seed.ver === layoutVersion && nodes.every((n) => seed.has(n.key))) {
@@ -865,7 +874,7 @@ function layoutNetz(L) {
     L.set("a|" + a.id, { x: c.x, y: c.y, r: mine.length ? 0 : 60, o: 1 });
     L.set("la|" + a.id, { x: c.x, y: c.y, r: c.y - top, o: 1, s });
   }
-  for (const l of S.links) L.set("l|" + l.id, { o: 1 });
+  for (const l of S.links) L.set("l|" + l.id, { o: linkVisible(l) ? 1 : 0 });
 }
 
 // ---------- Animation ----------
@@ -1188,7 +1197,7 @@ function paintOne(k, e) {
   } else if (t === "l") {
     const l = S.links.find((x) => x.id === id); if (!l) return;
     const K = KINDS[l.kind] || KINDS.liefert;
-    let hot = sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id);
+    let hot = linkOfSel(l);
     hot = hot || (linkPopId === l.id);
     e._p.setAttribute("stroke", hot ? TC.accent : TC.dim);
     e._d0.setAttribute("fill", hot ? TC.accent : TC.dim);
@@ -1199,7 +1208,7 @@ function paintOne(k, e) {
     e._p.setAttribute("stroke-dasharray", K.dash || "");
     e._p.setAttribute("marker-end", K.arrow ? (hot ? "url(#arrowHot)" : "url(#arrow)") : "");
     e._p.setAttribute("vector-effect", "non-scaling-stroke");
-    e._t.textContent = linkPopId === l.id ? "" : hot ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
+    e._t.textContent = linkPopId === l.id ? "" : hot && sel.t === "role" ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
     e.style.filter = focusSet && !(focusSet.has("r|" + l.from) && focusSet.has("r|" + l.to)) ? "opacity(0.25)" : "";
   }
 }
@@ -1619,7 +1628,7 @@ function select(s, focusName) {
   const was = $("#panel").classList.contains("open");
   renderPanel();
   if (lens !== "netz") relayout({ dur: 300 }); // Beziehungen der gewählten Rolle ein-/ausblenden
-  else paint(), render();
+  else { for (const l of S.links) { const v = cur.get("l|" + l.id); if (v) v.o = linkVisible(l) ? 1 : 0; } paint(); render(); }
   if (s) {
     const k = (s.t === "role" ? "r|" : s.t === "area" ? "a|" : "p|") + s.id;
     const kk = s.t === "person" && lens !== "menschen" ? `c|${rolesOf(s.id)[0]?.id}|${s.id}` : k;
