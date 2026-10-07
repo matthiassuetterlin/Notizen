@@ -263,25 +263,36 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 :root[data-dark="1"] #theme-btn .moon { display: block; }
 :root[data-dark="1"] #theme-btn .sun, :root[data-dark="1"] #theme-btn .rays { display: none; }
 .tune-sec { padding-bottom: 0.4rem; border-bottom: 1px solid var(--line); }
-.tune-group { border-bottom: 1px solid var(--line); }
-.tune-group > summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.85rem 0 0.7rem;
-  cursor: pointer;
-  list-style: none;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-.tune-group > summary::-webkit-details-marker { display: none; }
-.tune-group > summary::after { content: "+"; font-size: 16px; font-weight: 400; letter-spacing: 0; }
-.tune-group[open] > summary::after { content: "–"; }
-.tune-group[open] { padding-bottom: 0.6rem; }
 .tune-label { padding: 0.45rem 0 0.1rem; }
+.tune-color { display: flex; align-items: center; gap: 0.5rem; }
+.tune-color button { padding: 0.25rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--ink-dim); }
+.tune-color button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+input.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+input.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+input.switch:checked { background: var(--ink); }
+input.switch:checked::after { transform: translateX(16px); }
+.preset-sw { display: inline-block; width: 22px; height: 10px; margin-right: 0.45rem; border-radius: 3px; vertical-align: 0; }
 .tune-choice.c2, .tune-choice.c4 { grid-template-columns: repeat(2, 1fr); }
 /* Hamburger (same three lines as the website's settings button) */
 #menu-btn {
@@ -500,10 +511,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     </div>
   </section>
   <section class="tune-sec">
-    <h3>Stile</h3>
+    <h3>Gespeichert</h3>
     <div id="presets"></div>
-    <button type="button" id="preset-add" class="tune-add">+ Aktuellen Stil speichern</button>
-    <p class="tune-note">Klick lädt einen Stil. Der Stern macht ihn zum Standard beim Öffnen.</p>
+    <button type="button" id="preset-add" class="tune-add">+ Einstellungen speichern</button>
   </section>
   <div id="tune"></div>
   <div class="tune-actions">
@@ -517,8 +527,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   <div id="tools" class="bar" role="toolbar" aria-label="Werkzeuge">
     <button type="button" id="btn-new">Neue Bubble</button>
     <button type="button" id="btn-child" disabled>Unterbubble</button>
-    <button type="button" id="btn-add" aria-pressed="false" title="Beim Loslassen in die Ziel-Bubble einordnen (wie Shift)">Einordnen</button>
-    <button type="button" id="btn-remove" aria-pressed="false" title="Beim Loslassen aus der Bubble lösen, die man verlassen hat (wie Strg)">Herauslösen</button>
     <button type="button" id="btn-group" disabled title="Alle Bubbles wählen, die an der gewählten angedockt sind, um sie zusammen zu verschieben">Gruppe</button>
     <button type="button" id="btn-del" disabled>Löschen</button>
     <span class="sep" aria-hidden="true"></span>
@@ -554,8 +562,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const btn = {
     new: $("btn-new"),
     child: $("btn-child"),
-    add: $("btn-add"),
-    remove: $("btn-remove"),
     del: $("btn-del"),
     group: $("btn-group"),
     undo: $("btn-undo"),
@@ -568,87 +574,52 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 
   // --- Settings (hamburger menu) ------------------------------------------------
   // Base values chosen by Matthias (07.10.2026)
+  // What the menu offers; everything else follows from these (see derive)
   const DEFAULTS = {
-    attract: 0.006, // children drift towards the middle of their bubble
-    repel: 0.13, // neighbours push apart when they come too close
-    gap: 2.1, // air between neighbours, × goo
-    link: 0.006, // bubbles that share a bubble pull together
-    linkGap: 2, // how far they stay apart, × size of the shared bubble
-    friction: 0.67, // share of the speed kept per frame (higher = glides longer)
-    throw: 0.5, // momentum a bubble keeps when it is let go
-    goo: 17, // blur that melts shapes together, px
-    threshold: 0.57, // alpha where the contour sits (lower = fuller drops)
-    sharp: 60, // steepness of the contour
-    bridge: 0.8, // width of the skin around a shared bubble, × goo
-    size: 1.05, // bubble size
-    pad: 3, // space between rim and children
-    blend: 17, // colour gradient between nested bubbles, px
-    outline: true,
-    outlineW: 4, // hairline width, px
-    outlineColor: "", // empty = theme colour (white in dark mode)
-    dots: true,
-    font: 1,
-    grow: 1, // how much bigger the text of bubbles with much inside gets
-    textPad: 1, // air between text and contour
-    weight: "kraeftig", // normal | kraeftig
-    shade: 0, // 3D: light and shadow on the bubbles (0 = flat)
+    palette: "pastell", // pastell | kueste | mono
+    ink: "", // text colour, empty = automatic
     family: "sans", // sans | serif | mono
-    palette: "pastell", // pastell | rose | kueste | mono
-    ink: "graphit", // graphit | tinte | sepia
+    weight: "kraeftig", // normal | kraeftig
+    font: 1, // text size
+    grow: 1, // how much bigger the text of bubbles with much inside gets
+    round: true, // round bubbles, or bubbles that take the shape of what lies inside
+    merge: 0.42, // how readily bubbles melt together, and how far colours flow
+    line: 4, // contour width, 0 = none
+    shade: 0, // 3D: light and shadow (0 = flat)
+    glide: 0.34, // how far a bubble glides when let go
   };
+  // Values chosen by Matthias (07.10.2026) that stay fixed
+  const FIXED = { attract: 0.006, repel: 0.13, gap: 2.1, sharp: 60, size: 1.05, pad: 3, textPad: 1, dots: true, outlineColor: "" };
+  function derive(t) {
+    Object.assign(t, FIXED);
+    t.goo = 8 + 22 * t.merge;
+    t.blend = 4 + 30 * t.merge;
+    t.threshold = 0.62 - 0.12 * t.merge;
+    t.outline = t.line > 0;
+    t.outlineW = t.line;
+    t.friction = 0.55 + 0.35 * t.glide;
+    t.throw = 0.2 + 0.8 * t.glide;
+    return t;
+  }
   const SPEC = [
-    ["Farben", true],
-    ["palette", "Farbset der Bubbles", [["pastell", "Pastell"], ["rose", "Rosé"], ["kueste", "Küste"], ["mono", "Mono"]]],
-    ["ink", "Schriftfarbe", [["graphit", "Graphit"], ["tinte", "Tinte"], ["sepia", "Sepia"]]],
-    ["blend", "Farbverlauf", 0, 60, 0.5],
-    ["Text", true],
+    ["Farben"],
+    ["palette", "Farbset", [["pastell", "Pastell"], ["kueste", "Küste"], ["mono", "Mono"]]],
+    ["ink", "Schriftfarbe"],
+    ["Schrift"],
     ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
     ["weight", "Stärke", [["normal", "Normal"], ["kraeftig", "Kräftig"]]],
     ["font", "Schriftgröße", 0.7, 1.8, 0.05],
     ["grow", "Größer, je mehr darin liegt", 0, 2, 0.05],
-    ["textPad", "Abstand zur Kontur", 0.5, 2.5, 0.05],
-    ["Form", false],
+    ["Form"],
+    ["round", "Runde Bubbles"],
+    ["merge", "Verschmelzen", 0, 1, 0.01],
+    ["line", "Kontur", 0, 8, 0.1],
     ["shade", "Plastisch (3D)", 0, 1, 0.05],
-    ["size", "Bubble-Größe", 0.6, 2.5, 0.05],
-    ["pad", "Innenabstand", 0.3, 6, 0.05],
-    ["goo", "Verschmelzen", 2, 40, 0.5],
-    ["threshold", "Tropfenfülle (links = voller)", 0.12, 0.85, 0.01],
-    ["sharp", "Kantenschärfe", 4, 120, 1],
-    ["dots", "Punktraster im Hintergrund"],
-    ["Kontur", false],
-    ["outline", "Kontur zeigen"],
-    ["outlineW", "Konturstärke", 0.2, 10, 0.1],
-    ["outlineColor", "Konturfarbe"],
-    ["Bewegung", false],
-    ["attract", "Anziehung nach innen", 0, 0.03, 0.001],
-    ["repel", "Abstoßung", 0.01, 0.5, 0.01],
-    ["gap", "Abstand zwischen Bubbles", 0.3, 5, 0.05],
-    ["friction", "Gleiten", 0.4, 0.97, 0.01],
-    ["throw", "Schwung beim Loslassen", 0, 1.5, 0.05],
+    ["Bewegung"],
+    ["glide", "Gleiten nach dem Loslassen", 0, 1, 0.01],
   ];
   const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
-  // Styles: three built in, then the ones saved here; numbered by position.
-  // { list: [{ id, values }], def: id | null }
-  const STYLES = [
-    {
-      id: "b1",
-      name: "Bunt",
-      note: "farbig, flach, klare Linie",
-      values: { palette: "kueste", shade: 0, outline: true, outlineW: 3, outlineColor: "", family: "sans", weight: "kraeftig", ink: "graphit", dots: true, blend: 17, goo: 17, threshold: 0.57, sharp: 60 },
-    },
-    {
-      id: "b2",
-      name: "Monochrom",
-      note: "Grautöne, Haarlinie, Serifenschrift",
-      values: { palette: "mono", shade: 0, outline: true, outlineW: 1.4, outlineColor: "", family: "serif", weight: "normal", ink: "graphit", dots: false, blend: 6, goo: 12, threshold: 0.6, sharp: 90 },
-    },
-    {
-      id: "b3",
-      name: "Plastisch",
-      note: "weiche Farben, Licht und Schatten, ohne Linie",
-      values: { palette: "rose", shade: 0.85, outline: false, family: "sans", weight: "kraeftig", ink: "tinte", dots: false, blend: 24, goo: 22, threshold: 0.5, sharp: 50 },
-    },
-  ];
+  // Saved settings, numbered by position: { list: [{ id, values }], def: id | null }
   const PRESET_STORE = "notizen-presets-v1";
   let presets = { list: [], def: null };
   try {
@@ -656,25 +627,23 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (p && Array.isArray(p.list)) {
       // Earlier entries were named 01, 02, …; they keep that as their id
       const list = p.list.filter((x) => x && x.values).map((x) => ({ id: x.id || "c" + x.name, values: x.values }));
-      const ids = new Set([...STYLES.map((x) => x.id), ...list.map((x) => x.id)]);
+      const ids = new Set(list.map((x) => x.id));
       const def = p.def && !ids.has(p.def) && ids.has("c" + p.def) ? "c" + p.def : p.def;
       presets = { list, def: ids.has(def) ? def : null };
     }
   } catch (e) {
     /* none saved */
   }
-  const styleValues = (st) => (st.values && STYLES.includes(st) ? { ...DEFAULTS, ...st.values } : st.values);
-  const allStyles = () => [...STYLES, ...presets.list];
+  const INK_OLD = { graphit: "", tinte: "#1f3a5f", sepia: "#5b3d28" };
   const clean = (v) => {
     const out = {};
     for (const k in DEFAULTS) out[k] = v && k in v && typeof v[k] === typeof DEFAULTS[k] ? v[k] : DEFAULTS[k];
-    return out;
+    if (out.ink in INK_OLD) out.ink = INK_OLD[out.ink];
+    if (out.ink && !/^#[0-9a-f]{6}$/i.test(out.ink)) out.ink = "";
+    return derive(out);
   };
   // The base: the saved settings marked "Standard", else the built-in values
-  const base = () => {
-    const st = allStyles().find((x) => x.id === presets.def);
-    return clean(st ? styleValues(st) : null);
-  };
+  const base = () => clean(presets.list.find((x) => x.id === presets.def)?.values);
   const T = base();
   try {
     const cur = JSON.parse(localStorage.getItem(TUNE_STORE) || "null");
@@ -693,8 +662,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   // Bubble colour sets; switching set recolours bubbles slot by slot
   const PALETTES = {
     pastell: ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"],
-    // Dusty rose, clay and sage (after the "Dusty Sage" and "Chalky Coral" moods)
-    rose: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"],
     // Mint, sea blue, peach and sand (after the "Serene Coastline" and "Sunset Glow" moods)
     kueste: ["#d1e8e2", "#a9d6e5", "#9cc5c9", "#6fa8b0", "#ffe8d6", "#ffcf8f", "#d9b39c", "#e9e4d8"],
     // Warm greys, light to dark
@@ -703,27 +670,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   // Earlier sets, so saved colours and settings move over slot by slot
   const LEGACY = {
     kraeftig: { to: "kueste", colors: ["#e8794f", "#e9b740", "#6fb37b", "#4f8fcf", "#9b7fd0", "#d9658a", "#a08d74", "#3fa3a0"] },
-    erdig: { to: "rose", colors: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"] },
+    erdig: { to: "pastell", colors: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"] },
+    rose: { to: "pastell", colors: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"] },
   };
   if (LEGACY[T.palette]) T.palette = LEGACY[T.palette].to;
   const palette = () => PALETTES[T.palette] || PALETTES.pastell;
-  // Text colour sets: one tone for light grounds, one for dark grounds
-  const INKS = {
-    graphit: ["rgba(44, 40, 36, 0.86)", "rgba(250, 247, 242, 0.92)"],
-    tinte: ["#1f3a5f", "#d6e4f7"],
-    sepia: ["#5b3d28", "#f1dfc8"],
-  };
   let themeDark = false;
 
   const IDLE_HINT =
-    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben, berühren dockt an · mit Shift: einordnen · mit Strg: herauslösen<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · Entf: löschen</span>';
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · berühren dockt an · in eine Bubble ziehen legt hinein, herausziehen holt heraus<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · Entf: löschen</span>';
 
   let bubbles = new Map();
   let view = { x: 0, y: 0, k: 1 };
   let selected = null; // the bubble the tools act on first
   let sel = new Set(); // every selected bubble (Shift-click adds and removes)
   let editing = null;
-  let toolMode = ""; // "" | "add" | "remove" (toolbar stand-in for Shift / Strg)
   let drag = null;
   let pan = null;
   let pinch = null;
@@ -836,6 +797,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     return "b" + Date.now().toString(36) + (seq++).toString(36);
   }
 
+  // The circles a bubble is drawn from: one, or (free form) one halo per child plus the label
+  const circlesOf = (b) => (b._shape && b._shape.length ? b._shape : [[b.x, b.y, b.r]]);
+  // The two circles of a and b that come closest: [gap, circle of a, circle of b]
+  function nearest(a, b) {
+    let best = [Infinity, null, null];
+    for (const p of circlesOf(a))
+      for (const q of circlesOf(b)) {
+        const g = Math.hypot(q[0] - p[0], q[1] - p[1]) - p[2] - q[2];
+        if (g < best[0]) best = [g, p, q];
+      }
+    return best;
+  }
+  function insideShape(b, pt) {
+    return circlesOf(b).some(([x, y, r]) => Math.hypot(pt.x - x, pt.y - y) <= r);
+  }
   // Docking: bubbles on the same level that were pushed together stay merged.
   // k = wanted distance as a share of the two radii (below 1 = overlapping)
   const sameLevel = (a, b) => (a.parents[0] || null) === (b.parents[0] || null);
@@ -848,13 +824,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     b.docks = {};
   }
   // The touching neighbours a bubble would dock to if let go here
-  function dockTargets(b, skip) {
+  function dockTargets(b, skip, pid = b.parents[0] || null) {
     const out = [];
     for (const o of bubbles.values()) {
-      if (o === b || (skip && skip.has(o)) || !sameLevel(b, o)) continue;
-      const reach = b.r + o.r + Math.max(6, sig(depthOf.get(b.id) || 0) * 0.5);
-      const dist = Math.hypot(o.x - b.x, o.y - b.y);
-      if (dist < reach) out.push({ o, k: Math.max(0.7, Math.min(1, dist / (b.r + o.r))) });
+      if (o === b || (skip && skip.has(o)) || (o.parents[0] || null) !== pid) continue;
+      const [gap, p, q] = nearest(b, o);
+      if (gap < Math.max(6, sig(depthOf.get(b.id) || 0) * 0.5)) {
+        const dist = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        out.push({ o, k: Math.max(0.7, Math.min(1, dist / (p[2] + q[2]))) });
+      }
     }
     return out;
   }
@@ -1014,10 +992,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         (a._linked ||= new Set()).add(c);
         (c._linked ||= new Set()).add(a);
         if (isPinned(a) || isPinned(c)) continue;
-        const dx = c.x - a.x;
-        const dy = c.y - a.y;
+        const [, p, q] = nearest(a, c);
+        const dx = q[0] - p[0];
+        const dy = q[1] - p[1];
         const dist = Math.hypot(dx, dy) || 1;
-        const want = a.docks[id] * (a.r + c.r);
+        const want = a.docks[id] * (p[2] + q[2]);
         const f = Math.max(-6, Math.min(6, (dist - want) * 0.06));
         force(a, (dx / dist) * f, (dy / dist) * f);
         force(c, (-dx / dist) * f, (-dy / dist) * f);
@@ -1049,8 +1028,51 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     };
 
     for (const b of all) {
+      b._shape = null;
       if (!b._own.length) continue;
       const d = depthOf.get(b.id);
+      if (!T.round) {
+        // Free form: the bubble is the skin around its children, the label sits on top
+        const gap = sig(d + 1) * 3 * T.gap;
+        for (const c of b._own) force(c, (b.x - c.x) * T.attract * 0.35, (b.y - c.y) * T.attract * 0.35);
+        repel(b._own, gap);
+        const pad = PAD[dd(d)] * T.pad + gap / 2;
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const shape = [];
+        for (const c of b._own) {
+          const r = c.r + pad;
+          shape.push([c.x, c.y, r]);
+          x0 = Math.min(x0, c.x - r);
+          x1 = Math.max(x1, c.x + r);
+          y0 = Math.min(y0, c.y - r);
+          y1 = Math.max(y1, c.y + r);
+        }
+        // Label row: a few circles over the top of the children
+        const L = b._label;
+        const cx = (x0 + x1) / 2;
+        const rl = L.h / 2 + L.mg;
+        const ly = y0 + pad * 0.6 - L.h / 2;
+        const half = Math.max(0, L.tw / 2);
+        const n = Math.max(1, Math.ceil((2 * half) / rl));
+        for (let i = 0; i <= n; i++) shape.push([cx - half + (2 * half * i) / n, ly, rl]);
+        // A spine from the label down into the middle, so the skin stays one piece
+        const my = (y0 + y1) / 2;
+        for (let y = ly + rl; y < my; y += rl) shape.push([cx, y, rl * 0.8]);
+        b._shape = shape;
+        b._labTop = ly - L.h / 2;
+        // The bubble's own point follows the centroid of its children, so their pull
+        // towards it cancels out and the group does not creep
+        if (!isPinned(b)) {
+          let sx = 0, sy = 0;
+          for (const c of b._own) {
+            sx += c.x;
+            sy += c.y;
+          }
+          b.x += (sx / b._own.length - b.x) * 0.5;
+          b.y += (sy / b._own.length - b.y) * 0.5;
+        }
+        continue;
+      }
       const tx = b.x;
       const ty = b.y + b._off;
       for (const c of b._own) force(c, (tx - c.x) * T.attract, (ty - c.y) * T.attract);
@@ -1112,7 +1134,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     for (const b of order) {
       const d = dd(depthOf.get(b.id));
       let target;
-      if (b._own.length) {
+      if (b._shape) {
+        target = 0;
+        for (const [x, y, r] of b._shape) target = Math.max(target, Math.hypot(x - b.x, y - b.y) + r);
+        b.r = target;
+        continue;
+      } else if (b._own.length) {
         const L = b._label;
         const half = L.tw / 2 + L.mg;
         target = Math.max(MIN_R[d] * T.size * 1.2, half * 1.22, (L.h + 2 * L.mg) * 1.25);
@@ -1197,9 +1224,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     svg.classList.toggle("has-dots", !!T.dots);
     document.documentElement.style.setProperty("--fs", T.font);
     themeDark = luminance(toHex(cssColor("--bg", "#ffffff"))) < 0.5;
-    const ink = INKS[T.ink] || INKS.graphit;
-    document.documentElement.style.setProperty("--ink-l", ink[0]);
-    document.documentElement.style.setProperty("--ink-d", ink[1]);
+    // One chosen colour for text on light grounds, a pale tint of it on dark ones
+    const mix = (hex, to, k) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(hex.substr(i, 2), 16) * (1 - k) + to * k).toString(16).padStart(2, "0")).join("");
+    document.documentElement.style.setProperty("--ink-l", T.ink || "rgba(44, 40, 36, 0.86)");
+    document.documentElement.style.setProperty("--ink-d", T.ink ? mix(T.ink, 255, 0.82) : "rgba(250, 247, 242, 0.92)");
     document.documentElement.style.setProperty("--label-font", FAMILIES[T.family] || FAMILIES.sans);
     dirty = true;
   }
@@ -1274,13 +1302,20 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       if (orderDirty || lc.parentNode !== lineLayer(d).bodies) lineLayer(d).bodies.appendChild(lc);
       const cx = b.x.toFixed(1);
       const cy = b.y.toFixed(1);
-      const r = Math.max(1, b.r).toFixed(1);
+      const r = b._shape ? "0" : Math.max(1, b.r).toFixed(1);
       for (const c of [fc, lc]) {
         c.setAttribute("cx", cx);
         c.setAttribute("cy", cy);
         c.setAttribute("r", r);
       }
       fc.style.fill = fillOf(b);
+      if (b._shape) {
+        const fill = fillOf(b);
+        for (const [x, y, rr] of b._shape) {
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d).bridges);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d).bridges);
+        }
+      }
 
       // A shared bubble pulls the skin of every bubble it belongs to around
       // itself, so those bubbles melt into one another right there
@@ -1333,7 +1368,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const S = b._label || leafSize(b.text, ty, MIN_R[dd(d)] * T.size);
       const isParent = b._own && b._own.length;
       const left = b.x - S.w / 2;
-      const top = isParent ? b.y - b.r + labelTop(b.r, S) : b.y - S.h / 2;
+      const top = b._shape ? b._labTop : isParent ? b.y - b.r + labelTop(b.r, S) : b.y - S.h / 2;
       lab.style.width = S.w + "px";
       lab.style.fontSize = ty.px + "px";
       lab.style.fontWeight = ty.wt;
@@ -1427,8 +1462,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     btn.group.disabled = !selected || !Object.keys(selected.docks).length;
     btn.undo.disabled = !undoStack.length;
     btn.redo.disabled = !redoStack.length;
-    btn.add.setAttribute("aria-pressed", String(toolMode === "add"));
-    btn.remove.setAttribute("aria-pressed", String(toolMode === "remove"));
     colorsEl.hidden = !selected;
     if (selected && bubbles.has(selected.id)) {
       for (const s of colorsEl.querySelectorAll(".swatch")) s.setAttribute("aria-pressed", String((selected.color || "") === s.dataset.color));
@@ -1692,7 +1725,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     let bestD = -1;
     for (const b of bubbles.values()) {
       if (exclude && exclude.has(b)) continue;
-      if (Math.hypot(p.x - b.x, p.y - b.y) > b.r) continue;
+      if (!insideShape(b, p)) continue;
       const d = depthOf.get(b.id);
       if (!best || d > bestD || (d === bestD && b.r < best.r)) {
         best = b;
@@ -1702,92 +1735,86 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     return best;
   }
 
-  // Plain drag only moves. Shift: put it into the bubble under the pointer.
-  // Strg (also Cmd/Alt): take it out of the bubbles it was dragged out of.
-  function modeOf(e) {
-    if (e.shiftKey) return "add";
-    if (e.ctrlKey || e.metaKey || e.altKey) return "remove";
-    return toolMode;
+  // One gesture for everything: where a bubble is let go decides where it
+  // lives (inside the bubble it mostly sits in, or on the board), and it docks
+  // to whatever it touches there.
+  function modeOf() {
+    return "";
   }
-
-  // What a drop would do: { kind, ... } with kind add | deeper | out | keep
-  function dropPlan(b, t, mode, at) {
-    if (mode === "add") {
-      if (!t) return { kind: "keep", why: "none" };
-      if (b.parents.includes(t.id)) return { kind: "keep", why: "already", t };
-      return { kind: "add", t };
-    }
-    if (mode === "remove") {
-      const left = b.parents.map((pid) => bubbles.get(pid)).filter((p) => p && Math.hypot(at.x - p.x, at.y - p.y) > p.r);
-      if (!left.length) return { kind: "keep", why: b.parents.length ? "inside" : "main" };
-      let into = null;
-      if (left.length === b.parents.length) {
-        // Stepping out of the last one: land in the surrounding bubble, if dropped there
-        let best = -1;
-        for (const x of bubbles.values()) {
-          if (Math.hypot(at.x - x.x, at.y - x.y) > x.r || !left.some((p) => isAncestor(x, p))) continue;
-          const d = depthOf.get(x.id);
-          if (d > best) {
-            best = d;
-            into = x;
-          }
-        }
+  function holds(t, b, current) {
+    if (t.r < b.r * 1.15) return false;
+    const dist = Math.hypot(b.x - t.x, b.y - t.y);
+    // Leaving needs a clear pull outwards; entering needs the bubble mostly inside
+    return current ? dist < t.r + b.r * 0.1 : dist + b.r * 0.4 < t.r * 0.95;
+  }
+  function containerFor(b, skip) {
+    const cur = bubbles.get(b.parents[0]) || null;
+    let best = null;
+    let bestD = -1;
+    for (const t of bubbles.values()) {
+      if (skip.has(t) || !holds(t, b, t === cur)) continue;
+      const d = depthOf.get(t.id);
+      if (d > bestD || (d === bestD && t.r < best.r)) {
+        best = t;
+        bestD = d;
       }
-      return { kind: "out", left, into };
     }
-    // Plain: dock to what it touches, let go of what it no longer touches
-    const skip = drag && drag.group ? new Set(drag.group) : null;
-    const now = dockTargets(b, skip);
-    const left = Object.keys(b.docks)
-      .map((id) => bubbles.get(id))
-      .filter((o) => o && !(skip && skip.has(o)) && !now.some((x) => x.o === o));
-    const fresh = now.filter((x) => !(x.o.id in b.docks));
-    return { kind: "dock", now, fresh, left };
+    // Stay in the current bubble while still inside it, unless a deeper one takes it
+    if (cur && !skip.has(cur) && holds(cur, b, true) && (!best || depthOf.get(best.id) <= depthOf.get(cur.id))) best = cur;
+    return best;
+  }
+  function dropPlan(b) {
+    const skip = new Set();
+    for (const g of drag && drag.group ? drag.group : [b]) for (const x of subtree(g)) skip.add(x);
+    const into = containerFor(b, skip);
+    const cur = bubbles.get(b.parents[0]) || null;
+    const moved = into !== cur;
+    const pid = into ? into.id : null;
+    const now = dockTargets(b, new Set(drag && drag.group ? drag.group : []), pid);
+    const left = moved
+      ? Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean)
+      : Object.keys(b.docks)
+          .map((id) => bubbles.get(id))
+          .filter((o) => o && !(drag && drag.group && drag.group.includes(o)) && !now.some((x) => x.o === o));
+    const fresh = now.filter((x) => moved || !(x.o.id in b.docks));
+    return { kind: "dock", into, cur, moved, now, fresh, left };
   }
 
   function dragHint() {
     const b = drag.b;
-    const p = dropPlan(b, drag.target, drag.mode, drag.last);
-    const bn = esc(name(b));
-    const tn = p.t ? esc(name(p.t)) : "";
+    const p = dropPlan(b);
+    drag.target = p.moved ? p.into : null;
     const list = (xs) => xs.map((x) => "»" + esc(name(x)) + "«").join(" und ");
-    if (p.kind === "add") hint(`Loslassen: »${bn}« in »${tn}« einordnen`, true);
-    else if (p.kind === "dock" && p.fresh.length) hint(`Loslassen: an ${list(p.fresh.map((x) => x.o))} andocken`, true);
-    else if (p.kind === "dock" && p.left.length) hint(`Loslassen: von ${list(p.left)} lösen`, true);
-    else if (p.kind === "out") hint(`Loslassen: »${bn}« aus ${list(p.left)} lösen` + (p.into ? ` und in »${esc(name(p.into))}« legen` : ""), true);
-    else if (drag.mode === "add") hint(p.why === "already" ? `»${bn}« gehört schon zu »${tn}«` : "Über eine Bubble ziehen, in die sie gehören soll", true);
-    else if (drag.mode === "remove") hint(p.why === "main" ? `»${bn}« ist schon eine eigene Bubble` : "Aus der Bubble herausziehen, von der sie gelöst werden soll", true);
-    else hint('Verschieben · berühren dockt an<span class="long"> · Shift: einordnen · Strg: herauslösen</span>', true);
+    const parts = [];
+    if (p.moved) parts.push(p.into ? `in ${list([p.into])} legen` : "auf das Brett legen");
+    if (p.fresh.length) parts.push(`an ${list(p.fresh.map((x) => x.o))} andocken`);
+    else if (!p.moved && p.left.length) parts.push(`von ${list(p.left)} lösen`);
+    hint(parts.length ? "Loslassen: " + parts.join(" und ") : "Verschieben · berühren dockt an · in eine Bubble ziehen legt hinein", true);
   }
 
-  function dropOne(b, at) {
-    const p = dropPlan(b, drag.target, drag.mode, at);
-    if (p.kind === "add") {
-      undockAll(b);
-      b.parents = [p.t.id];
-      return `»${name(b)}« liegt jetzt in »${name(p.t)}«`;
-    }
-    if (p.kind === "out") {
+  function dropOne(b) {
+    const p = dropPlan(b);
+    if (p.moved) {
       undockAll(b);
       b.parents = p.into ? [p.into.id] : [];
-      return `»${name(b)}« ist aus ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`;
-    }
-    if (p.kind === "dock") {
+    } else {
       for (const o of p.left) {
         delete b.docks[o.id];
         delete o.docks[b.id];
       }
-      for (const { o, k } of p.now) dockPair(b, o, k);
-      if (p.fresh.length) return `»${name(b)}« ist an ${p.fresh.map((x) => "»" + name(x.o) + "«").join(" und ")} angedockt`;
-      if (p.left.length) return `»${name(b)}« ist von ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`;
     }
-    return "";
+    for (const { o, k } of p.now) dockPair(b, o, k);
+    const parts = [];
+    if (p.moved) parts.push(p.into ? `liegt jetzt in »${name(p.into)}«` : "liegt jetzt auf dem Brett");
+    if (p.fresh.length) parts.push(`ist an ${p.fresh.map((x) => "»" + name(x.o) + "«").join(" und ")} angedockt`);
+    else if (!p.moved && p.left.length) parts.push(`ist von ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`);
+    return parts.length ? `»${name(b)}« ${parts.join(" und ")}` : "";
   }
 
   function drop() {
     const msgs = [];
     for (const g of drag.group) {
-      const m = dropOne(g, g === drag.b ? drag.last : g);
+      const m = dropOne(g);
       if (m) msgs.push(m);
       // Let it glide on a little with the speed it was thrown at
       g.vx = drag.vx * T.throw;
@@ -1880,7 +1907,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         drag.vy = drag.vy * 0.5 + dy * 0.5;
         drag.t = performance.now();
         drag.last = w;
-        drag.target = hitTest(w, drag.exclude);
         drag.mode = modeOf(e);
         dragHint();
         dirty = true;
@@ -2041,15 +2067,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (editing) labels.get(editing.id)?.blur();
     addChild(p);
   });
-  const setTool = (m) => {
-    toolMode = toolMode === m ? "" : m;
-    updateChrome();
-    if (toolMode === "add") flash("Einordnen ist an: eine Bubble auf die Bubble ziehen, in die sie gehören soll.");
-    else if (toolMode === "remove") flash("Herauslösen ist an: eine Bubble aus ihrer Bubble herausziehen.");
-    else hint(IDLE_HINT);
-  };
-  btn.add.addEventListener("click", () => setTool("add"));
-  btn.remove.addEventListener("click", () => setTool("remove"));
   function deleteSelection() {
     if (editing) labels.get(editing.id)?.blur();
     const list = [...sel].filter((b) => bubbles.has(b.id));
@@ -2102,9 +2119,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const panel = $("panel");
   const menuBtn = $("menu-btn");
   const tuneEl = $("tune");
-  const LOOK = new Set(["goo", "threshold", "sharp", "blend", "outline", "outlineW", "outlineColor", "dots", "font", "family", "ink", "shade"]);
-  const SIZE = new Set(["size", "font", "family", "grow", "textPad", "weight"]);
-  const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : step >= 0.1 ? v.toFixed(1) : step >= 0.01 ? v.toFixed(2) : v.toFixed(3));
+  const LOOK = new Set(["merge", "line", "font", "family", "ink", "shade"]);
+  const SIZE = new Set(["font", "family", "grow", "weight", "line"]);
   const inputs = {};
 
   function saveTune() {
@@ -2115,6 +2131,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     }
   }
   function applyTune(key) {
+    derive(T);
     if (SIZE.has(key)) mcache.clear();
     if (LOOK.has(key) || key === undefined) buildFilters();
     // Wake everything up so new forces take effect
@@ -2125,24 +2142,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
   function buildPanel() {
     tuneEl.textContent = "";
-    let group = tuneEl;
     for (const row of SPEC) {
-      if (row.length === 2) {
-        group = document.createElement("details");
-        group.className = "tune-group";
-        group.open = row[1];
-        const sm = document.createElement("summary");
-        sm.textContent = row[0];
-        group.appendChild(sm);
-        tuneEl.appendChild(group);
+      if (row.length === 1) {
+        const h = document.createElement("h3");
+        h.textContent = row[0];
+        tuneEl.appendChild(h);
         continue;
       }
       const [key, label, min, max, step] = row;
       if (Array.isArray(min)) {
-        const h = document.createElement("div");
-        h.className = "tune-label";
-        h.textContent = label;
-        group.appendChild(h);
+        if (key !== "family") {
+          const h = document.createElement("div");
+          h.className = "tune-label";
+          h.textContent = label;
+          tuneEl.appendChild(h);
+        }
         const box = document.createElement("div");
         box.className = "tune-choice c" + min.length;
         box.setAttribute("role", "group");
@@ -2153,12 +2167,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
           b.id = `tune-${key}-${value}`;
           b.textContent = text;
           if (key === "family") b.style.fontFamily = FAMILIES[value];
-          if (key === "ink") {
-            const dot = document.createElement("span");
-            dot.className = "ink-dot";
-            dot.style.background = INKS[value][0];
-            b.prepend(dot);
-          }
+          if (key === "weight") b.style.fontWeight = value === "kraeftig" ? 700 : 400;
           if (key === "palette") b.style.background = `linear-gradient(90deg, ${PALETTES[value].slice(0, 5).join(", ")})`, (b.style.color = "#2c2824");
           b.addEventListener("click", () => {
             if (key === "palette" && T.palette !== value) recolor(T.palette, value);
@@ -2169,9 +2178,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
           box.appendChild(b);
         }
         box._choice = true;
-        box._key = key;
         inputs[key] = box;
-        group.appendChild(box);
+        tuneEl.appendChild(box);
         continue;
       }
       const wrap = document.createElement("div");
@@ -2186,18 +2194,35 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const type = typeof DEFAULTS[key];
       if (type === "boolean") {
         inp.type = "checkbox";
+        inp.className = "switch";
+        inp.setAttribute("role", "switch");
         inp.addEventListener("change", () => {
           T[key] = inp.checked;
           applyTune(key);
         });
         wrap.appendChild(inp);
       } else if (type === "string") {
+        // Free colour, with a way back to automatic
+        const box = document.createElement("span");
+        box.className = "tune-color";
+        const auto = document.createElement("button");
+        auto.type = "button";
+        auto.id = id + "-auto";
+        auto.textContent = "Automatisch";
+        auto.addEventListener("click", () => {
+          T[key] = "";
+          applyTune(key);
+          syncPanel();
+        });
         inp.type = "color";
         inp.addEventListener("input", () => {
           T[key] = inp.value;
           applyTune(key);
+          auto.setAttribute("aria-pressed", "false");
         });
-        wrap.appendChild(inp);
+        inp._auto = auto;
+        box.append(auto, inp);
+        wrap.appendChild(box);
       } else {
         const val = document.createElement("span");
         val.className = "tune-val";
@@ -2208,17 +2233,23 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         inp.step = step;
         inp.addEventListener("input", () => {
           T[key] = Number(inp.value);
-          val.textContent = fmt(T[key], step);
+          val.textContent = show(key, T[key]);
           applyTune(key);
         });
         inp._val = val;
-        inp._step = step;
         wrap.appendChild(inp);
       }
       inputs[key] = inp;
-      group.appendChild(wrap);
+      tuneEl.appendChild(wrap);
     }
     syncPanel();
+  }
+  // Slider values in words or percent rather than raw numbers
+  function show(key, v) {
+    if (key === "line") return v < 0.05 ? "keine" : v.toFixed(1) + " px";
+    if (key === "shade") return v < 0.01 ? "flach" : Math.round(v * 100) + " %";
+    if (key === "font") return Math.round(v * 100) + " %";
+    return Math.round((v / (key === "grow" ? 2 : 1)) * 100) + " %";
   }
   function syncPanel() {
     renderPresets();
@@ -2227,10 +2258,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       if (inp._choice) {
         for (const b of inp.children) b.setAttribute("aria-pressed", String(b.id === `tune-${key}-${T[key]}`));
       } else if (inp.type === "checkbox") inp.checked = !!T[key];
-      else if (inp.type === "color") inp.value = T[key] || toHex(cssColor("--outline", "#595959"));
-      else {
+      else if (inp.type === "color") {
+        inp.value = T[key] || (themeDark ? "#faf7f2" : "#2c2824");
+        inp._auto.setAttribute("aria-pressed", String(!T[key]));
+      } else {
         inp.value = T[key];
-        inp._val.textContent = fmt(T[key], inp._step);
+        inp._val.textContent = show(key, T[key]);
       }
     }
   }
@@ -2248,7 +2281,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   menuBtn.addEventListener("click", () => toggleMenu(panel.hidden));
   // New colour set: every bubble coloured from the old set takes the same slot in the new one
   function recolor(from, to) {
-    const a = PALETTES[from] || PALETTES.pastell;
+    const a = PALETTES[from] || LEGACY[from]?.colors || PALETTES.pastell;
     const b = PALETTES[to] || PALETTES.pastell;
     const hit = [...bubbles.values()].filter((x) => x.color && a.includes(x.color.toLowerCase()));
     if (hit.length) {
@@ -2263,7 +2296,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
 
   function setAll(values) {
-    if (values && LEGACY[values.palette]) values = { ...values, palette: LEGACY[values.palette].to };
+    if (values && LEGACY[values.palette]) {
+      recolor(values.palette, LEGACY[values.palette].to);
+      values = { ...values, palette: LEGACY[values.palette].to };
+    }
     if (values && values.palette && values.palette !== T.palette) recolor(T.palette, values.palette);
     Object.assign(T, clean(values));
     mcache.clear();
@@ -2284,11 +2320,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
   function renderPresets() {
     presetsEl.textContent = "";
-    allStyles().forEach((st, i) => {
-      const own = !STYLES.includes(st);
-      const values = styleValues(st);
+    if (!presets.list.length) {
+      const p = document.createElement("p");
+      p.className = "tune-note";
+      p.textContent = "Noch nichts gespeichert.";
+      presetsEl.appendChild(p);
+    }
+    presets.list.forEach((st, i) => {
       const row = document.createElement("div");
-      row.className = "preset" + (same(T, clean(values)) ? " is-current" : "");
+      row.className = "preset" + (same(T, clean(st.values)) ? " is-current" : "");
       const nm = document.createElement("button");
       nm.type = "button";
       nm.className = "preset-name";
@@ -2296,52 +2336,51 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const num = document.createElement("span");
       num.className = "num";
       num.textContent = String(i + 1);
+      // A small preview: colour set, font
       const title = document.createElement("span");
-      title.textContent = own ? `Eigener Stil` : st.name;
+      const v = clean(st.values);
+      const sw = document.createElement("span");
+      sw.className = "preset-sw";
+      sw.style.background = `linear-gradient(90deg, ${(PALETTES[v.palette] || PALETTES.pastell).slice(0, 4).join(", ")})`;
+      title.append(sw, document.createTextNode([FAMILIES_NAME[v.family], v.round ? "rund" : "frei", v.shade > 0.05 ? "3D" : "flach"].join(" · ")));
       nm.append(num, title);
-      if (!own) {
-        const sub = document.createElement("span");
-        sub.className = "sub";
-        sub.textContent = st.note;
-        nm.appendChild(sub);
-      }
-      nm.title = `Stil ${i + 1} laden`;
-      nm.addEventListener("click", () => setAll(values));
+      nm.title = `Einstellungen ${i + 1} laden`;
+      nm.addEventListener("click", () => setAll(st.values));
       const def = document.createElement("button");
       def.type = "button";
       def.className = "preset-def";
       const isDef = presets.def === st.id;
       def.textContent = isDef ? "★" : "☆";
       def.setAttribute("aria-pressed", String(isDef));
-      def.title = isDef ? "Nicht mehr als Standard verwenden" : "Als Standard beim Öffnen verwenden";
+      def.title = isDef ? "Nicht mehr beim Öffnen verwenden" : "Beim Öffnen verwenden";
       def.addEventListener("click", () => {
         presets.def = isDef ? null : st.id;
         savePresets();
         renderPresets();
       });
-      row.append(nm, def);
-      if (own) {
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "preset-del";
-        del.textContent = "×";
-        del.setAttribute("aria-label", `Stil ${i + 1} löschen`);
-        del.addEventListener("click", () => {
-          presets.list = presets.list.filter((x) => x !== st);
-          if (presets.def === st.id) presets.def = null;
-          savePresets();
-          renderPresets();
-        });
-        row.appendChild(del);
-      }
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "preset-del";
+      del.textContent = "×";
+      del.setAttribute("aria-label", `Einstellungen ${i + 1} löschen`);
+      del.addEventListener("click", () => {
+        presets.list = presets.list.filter((x) => x !== st);
+        if (presets.def === st.id) presets.def = null;
+        savePresets();
+        renderPresets();
+      });
+      row.append(nm, def, del);
       presetsEl.appendChild(row);
     });
   }
+  const FAMILIES_NAME = { sans: "Manrope", serif: "Playfair", mono: "DM Mono" };
   $("preset-add").addEventListener("click", () => {
-    presets.list.push({ id: "c" + Date.now().toString(36), values: { ...T } });
+    const values = {};
+    for (const k in DEFAULTS) values[k] = T[k];
+    presets.list.push({ id: "c" + Date.now().toString(36), values });
     savePresets();
     renderPresets();
-    flash(`Als Stil ${STYLES.length + presets.list.length} gespeichert`);
+    flash(`Als ${presets.list.length} gespeichert`);
   });
 
   // --- Theme ----------------------------------------------------------------------
