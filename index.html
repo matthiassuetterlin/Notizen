@@ -23,6 +23,11 @@
   --warn: #d98a12;
   --wash1: rgba(255, 138, 115, 0.13);
   --wash2: rgba(90, 169, 255, 0.12);
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.12);
+  --seg: #ffffff;
+  --hover: rgba(0, 0, 0, 0.045);
+  --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12);
   --display: "Playfair Display", "Times New Roman", Times, serif;
   --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -34,6 +39,8 @@
     --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
     --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
     --wash1: rgba(255, 138, 115, 0.07); --wash2: rgba(90, 169, 255, 0.08);
+    --accent: #3d9bff; --accent-soft: rgba(61, 155, 255, 0.18); --seg: #3a3835; --hover: rgba(255, 255, 255, 0.06);
+    --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -6px rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }
 }
@@ -42,6 +49,8 @@
   --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
   --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
   --wash1: rgba(255, 138, 115, 0.07); --wash2: rgba(90, 169, 255, 0.08);
+  --accent: #3d9bff; --accent-soft: rgba(61, 155, 255, 0.18); --seg: #3a3835; --hover: rgba(255, 255, 255, 0.06);
+    --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -6px rgba(0, 0, 0, 0.6);
   color-scheme: dark;
 }
 
@@ -74,22 +83,28 @@ button { cursor: pointer; }
   display: flex; align-items: flex-start; gap: 12px; pointer-events: none;
 }
 .top > * { pointer-events: auto; }
-.brand { font-family: var(--display); font-size: 24px; line-height: 38px; letter-spacing: 0.01em; margin-right: 4px; white-space: nowrap; }
+.brand { font-family: var(--display); font-size: 23px; line-height: 38px; letter-spacing: -0.01em; margin-right: 4px; white-space: nowrap; display: flex; align-items: center; gap: 9px; }
+.brand i { width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(from 200deg, #ff8a73, #ffc94d, #3fcf9a, #5aa9ff, #b07cff, #ff6fa8, #ff8a73); box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); }
 .pill {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--panel); border: 0; border-radius: 12px; box-shadow: var(--shadow);
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
-.lenses { display: flex; padding: 3px; gap: 2px; height: 38px; }
+.lenses { display: flex; padding: 3px; gap: 2px; height: 38px; position: relative; }
 .lenses button {
-  border: 0; background: none; border-radius: 999px; padding: 0 14px; height: 30px;
-  font-weight: 600; font-size: 13px; color: var(--ink-dim);
+  border: 0; background: none; border-radius: 9px; padding: 0 13px; height: 32px; position: relative; z-index: 1;
+  font-weight: 600; font-size: 13px; color: var(--ink-dim); transition: color .2s;
 }
-.lenses button[aria-pressed="true"] { background: var(--mark); color: var(--bg); }
+.lenses button:hover { color: var(--ink); }
+.lenses button[aria-pressed="true"] { color: var(--ink); }
+.lenses .thumb { position: absolute; top: 3px; height: 32px; border-radius: 9px; background: var(--seg); box-shadow: 0 0 0 0.5px var(--line), 0 1px 3px rgba(0,0,0,.12); transition: left .32s cubic-bezier(.3,1.3,.5,1), width .32s cubic-bezier(.3,1.3,.5,1); }
+kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; color: var(--ink-dim); background: var(--d1); }
+.search kbd { position: absolute; right: 12px; top: 10px; pointer-events: none; }
 .search { position: relative; flex: 1 1 auto; max-width: 460px; margin: 0 auto; }
 .search input {
-  width: 100%; height: 38px; padding: 0 16px 0 38px; outline: none;
+  width: 100%; height: 38px; padding: 0 40px 0 38px; outline: none;
 }
-.search input:focus { border-color: var(--ink-dim); }
+.search input::-webkit-search-cancel-button { display: none; }
+.search input:focus { box-shadow: var(--shadow), 0 0 0 3px var(--accent-soft); }
 .search > svg { position: absolute; left: 14px; top: 12px; opacity: 0.55; z-index: 1; pointer-events: none; }
 .results {
   position: absolute; top: 44px; left: 0; right: 0; border-radius: 16px; padding: 6px;
@@ -97,7 +112,7 @@ button { cursor: pointer; }
 }
 .results.open { display: block; }
 .res { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 11px; border-radius: 10px; }
-.res:hover, .res.active { background: var(--d1); }
+.res:hover, .res.active { background: var(--hover); }
 .res b { font-weight: 700; }
 .res .path { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); display: block; margin-bottom: 2px; }
 .res .who { display: block; margin-top: 3px; font-size: 12.5px; }
@@ -107,10 +122,12 @@ button { cursor: pointer; }
 .res-empty { padding: 10px 12px; color: var(--ink-dim); }
 .right { display: flex; gap: 8px; }
 .ibtn {
+  border: 0; background: var(--panel);
   height: 38px; min-width: 38px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   font-weight: 600; font-size: 13px;
 }
-.ibtn[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+.ibtn:hover { background: var(--seg); }
+.ibtn[aria-pressed="true"] { color: var(--warn); }
 .badge { font-family: var(--mono); font-size: 11px; background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 7px; }
 .pop {
   position: fixed; top: 60px; right: 16px; z-index: 6; width: 300px; max-height: 70vh; overflow: auto;
@@ -119,29 +136,29 @@ button { cursor: pointer; }
 .pop.open { display: block; }
 .pop h4 { margin: 8px 8px 4px; font-size: 11px; font-family: var(--mono); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); }
 .pop button.item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 8px; }
-.pop button.item:hover { background: var(--d1); }
+.pop button.item:hover { background: var(--hover); }
 .pop .ok { padding: 8px; color: var(--ink-dim); }
 #menuPop { width: 320px; }
 .set { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 5px 8px; font-size: 13px; }
 .set output { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.set input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--mark); margin: 2px 0 0; }
+.set input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
 .set input:disabled { opacity: 0.35; }
 .seg { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 8px 6px; }
 .seg button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; }
-.seg button[aria-pressed="true"] { background: var(--mark); color: var(--bg); border-color: var(--mark); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
 .seg .sws { display: inline-flex; }
 .seg .sws i { width: 9px; height: 9px; border-radius: 50%; margin-left: -2px; border: 1px solid var(--line); }
 .sw-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: 13px; }
 .switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; margin: 0; }
 .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--d0); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
-.switch:checked { background: var(--mark); }
+.switch:checked { background: var(--accent); }
 .switch:checked::after { left: 16px; }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 8px 4px; }
 
 /* ---------- detail panel ---------- */
 .panel {
-  position: fixed; top: 66px; right: 16px; bottom: 16px; width: 350px; z-index: 4;
-  border-radius: 20px; padding: 18px 18px 22px; overflow: auto;
+  position: fixed; top: 66px; right: 16px; bottom: 16px; width: 340px; z-index: 4;
+  border-radius: 14px; padding: 16px 18px 22px; overflow: auto;
   transform: translateX(calc(100% + 30px)); transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
 }
 .panel.open { transform: none; }
@@ -159,17 +176,18 @@ button { cursor: pointer; }
 .panel textarea, .panel input.t, .panel select {
   width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--d1); padding: 8px 10px; outline: none; resize: vertical;
 }
-.panel textarea:focus, .panel input.t:focus { border-color: var(--ink-dim); }
+.panel textarea:focus, .panel input.t:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .accs { display: flex; flex-direction: column; gap: 6px; }
 .acc { display: flex; gap: 6px; align-items: center; }
 .acc input { flex: 1; }
 .acc.dup input { border-color: var(--warn); }
 .mini { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; }
-.mini:hover { background: var(--d1); }
+.mini:hover { background: var(--hover); }
 .del { border: 0; background: none; color: var(--ink-dim); font-size: 17px; padding: 0 4px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 5px 11px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
-.chip[aria-pressed="true"] { background: var(--mark); color: var(--bg); border-color: var(--mark); }
+.chip:hover { background: var(--hover); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
 .chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .rel { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
 .rel .k { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); white-space: nowrap; }
@@ -178,7 +196,7 @@ button { cursor: pointer; }
 .addrel select { flex: 1; padding: 6px 8px; font-size: 12.5px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .sw { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); padding: 0; }
-.sw[aria-pressed="true"] { outline: 2px solid var(--mark); outline-offset: 2px; }
+.sw[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
 .note { font-size: 12.5px; color: var(--warn); margin: 4px 0 0; }
 .danger { margin-top: 18px; border: 1px solid var(--line); background: none; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: var(--ink-dim); }
 .danger:hover { color: #c0392b; border-color: #c0392b; }
@@ -188,13 +206,34 @@ button { cursor: pointer; }
 
 /* ---------- bottom ---------- */
 .hint {
-  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 3;
-  padding: 8px 16px; font-size: 12.5px; color: var(--ink-dim); max-width: calc(100% - 32px); text-align: center;
-  transition: color 0.2s;
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 3;
+  padding: 8px 14px; font-size: 12.5px; color: var(--ink-dim); max-width: min(620px, calc(100% - 32px)); text-align: center;
+  transition: opacity 0.4s, transform 0.4s, color 0.2s;
 }
-.hint.live { color: var(--ink); border-color: var(--ink-dim); }
-.corner { position: fixed; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 6px; }
-.legend { position: fixed; right: 16px; bottom: 16px; z-index: 3; padding: 8px 14px; font-size: 12px; display: none; gap: 14px; color: var(--ink-dim); }
+.hint.quiet { opacity: 0; transform: translate(-50%, 8px); pointer-events: none; }
+.hint.live { color: var(--ink); }
+.corner { position: fixed; left: 16px; bottom: 16px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; }
+.corner .ibtn { box-shadow: none; background: none; height: 32px; min-width: 32px; padding: 0 8px; border-radius: 9px; }
+.corner .ibtn:hover { background: var(--hover); }
+.corner .sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+#zoomPct { font-family: var(--mono); font-size: 11.5px; font-weight: 500; min-width: 48px; font-variant-numeric: tabular-nums; }
+/* Andockpunkte und Verbindungen */
+.port { fill: var(--d0); stroke: var(--accent); opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(0.2); transition: opacity .16s, transform .2s cubic-bezier(.3,1.6,.5,1); cursor: crosshair; pointer-events: none; }
+.port.on { opacity: 1; transform: scale(1); pointer-events: all; }
+.port.on:hover { fill: var(--accent); transform: scale(1.45); }
+#wire { fill: none; stroke: var(--accent); stroke-linecap: round; pointer-events: none; }
+#wireEnd { fill: var(--accent); pointer-events: none; }
+[data-link] { cursor: pointer; }
+.lpop { position: fixed; z-index: 7; padding: 5px; display: none; gap: 2px; align-items: center; transform: translate(-50%, calc(-100% - 12px)); }
+.lpop.open { display: flex; animation: pop .18s cubic-bezier(.3,1.5,.5,1); }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)) scale(.92); } }
+.lpop button { border: 0; background: none; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lpop button:hover { background: var(--hover); }
+.lpop button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.lpop .sep { width: 1px; height: 18px; background: var(--line); margin: 0 2px; }
+.lpop .rm:hover { color: #d64545; }
+@media (prefers-reduced-motion: reduce) { .port, .lenses .thumb, .hint, .lpop.open { transition: none; animation: none; } }
+.legend { position: fixed; right: 16px; bottom: 16px; z-index: 3; padding: 9px 14px; font-size: 12px; display: none; gap: 14px; color: var(--ink-dim); }
 .legend.on { display: flex; }
 .panel.open ~ .legend { right: 382px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -237,12 +276,14 @@ button { cursor: pointer; }
     <g id="gLink"></g>
     <g id="gRole" filter="url(#goo)"></g>
     <g id="gTop"></g>
+    <g id="gPorts"><path id="wire" /><circle id="wireEnd" r="0" /></g>
   </g>
 </svg>
 
 <div class="top">
-  <div class="brand">Notizen</div>
+  <div class="brand"><i aria-hidden="true"></i>Notizen</div>
   <div class="lenses pill" role="group" aria-label="Linse">
+    <span class="thumb" aria-hidden="true"></span>
     <button data-lens="kreise">Bereiche</button>
     <button data-lens="menschen">Menschen</button>
     <button data-lens="netz">Netz</button>
@@ -250,6 +291,7 @@ button { cursor: pointer; }
   <div class="search">
     <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     <input id="q" class="pill" type="search" placeholder="Wer ist zuständig für …?" autocomplete="off" />
+    <kbd>/</kbd>
     <div id="results" class="results pill"></div>
   </div>
   <div class="right">
@@ -275,16 +317,21 @@ button { cursor: pointer; }
   <button class="item" data-m="example">Beispiel-Firma laden</button>
   <button class="item" data-m="clear">Leer beginnen</button>
   <h4>Bedienung</h4>
-  <div class="ok">Doppelklick legt an: auf einen Bereich eine Rolle, auf eine Person eine Rolle für sie, auf die freie Fläche einen Bereich bzw. eine Person. Ziehen ordnet zu, Shift beim Loslassen teilt statt verschiebt. Entf löscht, Strg/Cmd+Z macht rückgängig, 1 2 3 wechselt die Linse, / sucht.</div>
+  <div class="ok">Doppelklick legt an: auf einen Bereich eine Rolle, auf eine Person eine Rolle für sie, auf die freie Fläche einen Bereich bzw. eine Person. Ziehen ordnet zu, Shift beim Loslassen teilt statt verschiebt. Aus den Punkten am Rand einer Rolle ziehst du Verbindungen. Entf löscht, Strg/Cmd+Z macht rückgängig, 1 2 3 wechselt die Linse, / sucht.</div>
   <input id="file" type="file" accept="application/json,.json" hidden />
 </div>
 
 <aside id="panel" class="panel pill" aria-live="polite"></aside>
 
-<div class="corner">
-  <button id="undoBtn" class="ibtn pill" title="Rückgängig (Strg/Cmd+Z)">↶</button>
-  <button id="redoBtn" class="ibtn pill" title="Wiederholen (Strg/Cmd+Shift+Z)">↷</button>
+<div class="corner pill">
+  <button id="undoBtn" class="ibtn" title="Rückgängig (Strg/Cmd+Z)" aria-label="Rückgängig">↶</button>
+  <button id="redoBtn" class="ibtn" title="Wiederholen (Strg/Cmd+Shift+Z)" aria-label="Wiederholen">↷</button>
+  <span class="sep"></span>
+  <button id="zoomOut" class="ibtn" title="Verkleinern" aria-label="Verkleinern">−</button>
+  <button id="zoomPct" class="ibtn" title="Alles zeigen">100%</button>
+  <button id="zoomIn" class="ibtn" title="Vergrößern" aria-label="Vergrößern">+</button>
 </div>
+<div id="linkPop" class="lpop pill" role="dialog" aria-label="Verbindung"></div>
 <div id="hint" class="hint pill"></div>
 <div id="legend" class="legend pill"></div>
 
@@ -314,7 +361,7 @@ const HEAVY = 4; // ab so vielen Rollen gilt eine Person als ausgelastet
 const LENS_HINT = {
   kreise: "Bereiche und ihre Rollen. Rolle in einen anderen Bereich ziehen verschiebt sie. Personen-Punkt auf eine Rolle ziehen überträgt die Aufgabe, mit Shift teilt ihr sie.",
   menschen: "Wer trägt welche Rollen. Rolle auf eine Person ziehen überträgt sie, mit Shift teilt ihr sie. Auf die freie Fläche ziehen gibt sie ab.",
-  netz: "Wie die Rollen zusammenarbeiten. Rolle auf eine andere ziehen verbindet sie, die Art der Beziehung stellst du rechts ein.",
+  netz: "Wie die Rollen zusammenarbeiten. Fahr über eine Rolle und zieh aus einem Punkt am Rand eine Linie zu einer anderen.",
 };
 
 const uid = () => Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-3);
@@ -430,11 +477,11 @@ let TC = {};
 function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   const g = (n) => cs.getPropertyValue(n).trim();
-  TC = { d0: g("--d0"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn") };
+  TC = { d0: g("--d0"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn"), accent: g("--accent") };
   TC.dark = lum(hex(TC.d0)) < 0.4;
   buildFilter();
   $("#arrow path").setAttribute("stroke", TC.dim);
-  $("#arrowHot path").setAttribute("stroke", TC.mark);
+  $("#arrowHot path").setAttribute("stroke", TC.accent);
 }
 // Der Bubble-Look: Farben laufen weich ineinander, Formen verschmelzen wie Tropfen,
 // dazu auf Wunsch Schatten, Glanz und Kontur
@@ -545,10 +592,11 @@ function layoutKreise(L) {
       roleLabel(L, n.data.r, x, y, n.r, true);
     }
   }
-  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+  for (const l of S.links) L.set("l|" + l.id, { o: linkVisible(l) ? 1 : 0 });
 }
 
 let layoutVersion = 0;
+function linkVisible(l) { return linkPopId === l.id || (sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id)); }
 function runSim(nodes, seed, setup, ticks = 320) {
   // gleiche Daten, gleiche Karte: nur neu rechnen, wenn sich etwas geändert hat
   if (seed.ver === layoutVersion && nodes.every((n) => seed.has(n.key))) {
@@ -583,7 +631,7 @@ function layoutMenschen(L) {
     L.set("lp|" + n.id, { x: n.x, y: n.y, r: n.r, o: 1, s: Math.min(19, 13 + n.r * 0.05) });
   }
   for (const n of R) { L.set(n.key, { x: n.x, y: n.y, r: n.r, o: 1 }); roleLabel(L, role(n.id), n.x, n.y, n.r, false); }
-  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+  for (const l of S.links) L.set("l|" + l.id, { o: linkVisible(l) ? 1 : 0 });
 }
 
 function layoutNetz(L) {
@@ -659,7 +707,9 @@ function ensure(k) {
     if (t === "h") G.h.insertBefore(e, G.h.firstChild);
   } else if (t === "l") {
     e = mk("g", {}, G.l);
-    e._p = mk("path", { fill: "none", "marker-end": "url(#arrow)" }, e);
+    e._hit = mk("path", { fill: "none", stroke: "transparent", "stroke-width": 16, "vector-effect": "non-scaling-stroke", "pointer-events": "stroke", "data-link": k.slice(2) }, e);
+    e._p = mk("path", { fill: "none", "marker-end": "url(#arrow)", "stroke-linecap": "round", "pointer-events": "none" }, e);
+    e._d0 = mk("circle", { r: 3, "pointer-events": "none" }, e);
     e._t = mk("text", { class: "lnk-t" }, e);
   } else if (t === "la") {
     e = mk("g", {}, $("#gTop"));
@@ -739,16 +789,29 @@ function render() {
       const a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
       if (!a || !b || v.o < 0.02) { e.style.display = "none"; continue; }
       e.style.display = ""; e.style.opacity = v.o;
-      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
-      const ux = dx / d, uy = dy / d, bend = Math.min(60, d * 0.18);
-      const mx = (a.x + b.x) / 2 - uy * bend, my = (a.y + b.y) / 2 + ux * bend;
-      const s1 = a.r + 4, s2 = b.r + 6;
-      const p0 = towards(a, mx, my, s1), p1 = towards(b, mx, my, s2);
-      e._p.setAttribute("d", `M ${p0.x},${p0.y} Q ${mx},${my} ${p1.x},${p1.y}`);
-      e._t.setAttribute("x", (p0.x + 2 * mx + p1.x) / 4); e._t.setAttribute("y", (p0.y + 2 * my + p1.y) / 4 - 4);
+      const w = wirePath(a, b, 3, 7);
+      e._p.setAttribute("d", w.d); e._hit.setAttribute("d", w.d);
+      e._d0.setAttribute("cx", w.p0.x); e._d0.setAttribute("cy", w.p0.y);
+      e._t.setAttribute("x", w.m.x); e._t.setAttribute("y", w.m.y - 6);
+      e._mid = w.m;
     }
   }
   renderRings();
+  renderPorts();
+}
+// Kabel wie in Node-Editoren: verlässt die Bubble leicht seitlich und schwingt weich hinüber
+function wirePath(a, b, padA, padB) {
+  const ang = Math.atan2(b.y - a.y, b.x - a.x), d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const gap = Math.max(1, d - a.r - (b.r || 0)), tw = 0.32 * Math.min(1, gap / 220);
+  const ea = ang - tw, eb = ang + Math.PI + tw;
+  const p0 = { x: a.x + Math.cos(ea) * (a.r + padA), y: a.y + Math.sin(ea) * (a.r + padA) };
+  const p1 = b.r ? { x: b.x + Math.cos(eb) * (b.r + padB), y: b.y + Math.sin(eb) * (b.r + padB) } : { x: b.x, y: b.y };
+  const L = Math.min(160, gap * 0.45);
+  const c1 = { x: p0.x + Math.cos(ea) * L, y: p0.y + Math.sin(ea) * L };
+  const c2 = b.r ? { x: p1.x + Math.cos(eb) * L, y: p1.y + Math.sin(eb) * L } : { x: p1.x - Math.cos(ang) * L * 0.6, y: p1.y - Math.sin(ang) * L * 0.6 };
+  const m = { x: 0.125 * p0.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * p1.x, y: 0.125 * p0.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * p1.y };
+  const f = (v) => v.toFixed(1);
+  return { d: `M ${f(p0.x)},${f(p0.y)} C ${f(c1.x)},${f(c1.y)} ${f(c2.x)},${f(c2.y)} ${f(p1.x)},${f(p1.y)}`, p0, p1, m };
 }
 function towards(a, x, y, dist) { const dx = x - a.x, dy = y - a.y, d = Math.hypot(dx, dy) || 1; return { x: +(a.x + (dx / d) * dist).toFixed(1), y: +(a.y + (dy / d) * dist).toFixed(1) }; }
 
@@ -776,13 +839,15 @@ function paintOne(k, e) {
   } else if (t === "l") {
     const l = S.links.find((x) => x.id === id); if (!l) return;
     const K = KINDS[l.kind] || KINDS.liefert;
-    const hot = sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id);
-    e._p.setAttribute("stroke", hot ? TC.mark : TC.dim);
-    e._p.setAttribute("stroke-width", K.w * (hot ? 1.4 : 1));
+    let hot = sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id);
+    hot = hot || (linkPopId === l.id);
+    e._p.setAttribute("stroke", hot ? TC.accent : TC.dim);
+    e._d0.setAttribute("fill", hot ? TC.accent : TC.dim);
+    e._p.setAttribute("stroke-width", K.w * (hot ? 1.5 : 1.1));
     e._p.setAttribute("stroke-dasharray", K.dash || "");
     e._p.setAttribute("marker-end", K.arrow ? (hot ? "url(#arrowHot)" : "url(#arrow)") : "");
     e._p.setAttribute("vector-effect", "non-scaling-stroke");
-    e._t.textContent = hot ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
+    e._t.textContent = linkPopId === l.id ? "" : hot ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
     e.style.filter = focusSet && !(focusSet.has("r|" + l.from) && focusSet.has("r|" + l.to)) ? "opacity(0.25)" : "";
   }
 }
@@ -801,10 +866,10 @@ function renderRings() {
   if (selKey) {
     let k = selKey;
     if (sel.t === "area" && lens === "netz") k = null; // im Netz hat der Bereich keinen Kreis
-    if (sel.t === "person" && lens !== "menschen") for (const r of rolesOf(sel.id)) want.push({ k: `c|${r.id}|${sel.id}`, c: TC.mark, w: 1.6, pad: 3, chip: true });
-    if (k) want.push({ k, c: TC.mark, w: 1.6, pad: 5 });
+    if (sel.t === "person" && lens !== "menschen") for (const r of rolesOf(sel.id)) want.push({ k: `c|${r.id}|${sel.id}`, c: TC.accent, w: 1.6, pad: 3, chip: true });
+    if (k) want.push({ k, c: TC.accent, w: 1.6, pad: 4 });
   }
-  if (dropKey) want.push({ k: dropKey, c: TC.mark, w: 2.2, pad: 9, dash: "2 5" });
+  if (dropKey) want.push({ k: dropKey, c: TC.accent, w: 2.2, pad: 8, dash: "" });
   while (ringPool.length < want.length) ringPool.push(mk("circle", { fill: "none", "vector-effect": "non-scaling-stroke", "pointer-events": "none" }, $("#gTop")));
   ringPool.forEach((c, i) => {
     const w = want[i], v = w && cur.get(w.k);
@@ -828,11 +893,14 @@ const zoom = d3.zoom().scaleExtent([0.12, 4])
   .filter((e) => {
     if (e.type === "wheel" || e.button === 1) return true; // Mausrad und Mitteltaste auch über den Bubbles
     if (e.type === "dblclick") return false;
-    return (e.type === "touchstart" || e.button === 0) && !(e.target.closest && e.target.closest("[data-k]"));
+    return (e.type === "touchstart" || e.button === 0) && !(e.target.closest && e.target.closest("[data-k],[data-port],[data-link]"));
   })
   .on("zoom", (e) => {
     $("#world").setAttribute("transform", e.transform);
     setErode();
+    $("#zoomPct").textContent = Math.round(e.transform.k * 100) + "%";
+    renderPorts();
+    if (linkPopId) placeLinkPop();
   });
 svg.call(zoom).on("dblclick.zoom", null);
 function fit(L, dur = 800) {
@@ -863,8 +931,9 @@ function worldPoint(e) { const r = svg.node().getBoundingClientRect(); return d3
 // ---------- Ziehen ----------
 let drag = null;
 const hint = $("#hint");
-function setHint(text, live) { hint.textContent = text; hint.classList.toggle("live", !!live); }
-function idleHint() { setHint(LENS_HINT[lens]); }
+let hintT = null;
+function setHint(text, live) { clearTimeout(hintT); hint.textContent = text; hint.classList.toggle("live", !!live); hint.classList.remove("quiet"); }
+function idleHint() { setHint(LENS_HINT[lens]); hintT = setTimeout(() => hint.classList.add("quiet"), 7000); }
 
 function entityAt(pt, types, exclude) {
   // kleinster Kreis unter dem Zeiger gewinnt
@@ -912,14 +981,7 @@ function planDrop(pt, shift) {
       if (from) return { text: `${person(from).name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== from); } };
       return { text: "Auf eine Person ziehen, um die Rolle zu besetzen" };
     }
-    const tk = entityAt(pt, ["r"], new Set(ownedKeys(drag.k)));
-    const o = tk && role(tk.split("|")[1]);
-    if (o) {
-      const ex = S.links.find((l) => (l.from === r.id && l.to === o.id) || (l.from === o.id && l.to === r.id));
-      if (ex) return { k: tk, text: `${r.name} und ${o.name} sind schon verbunden` };
-      return { k: tk, text: `${r.name} liefert an ${o.name}`, run: () => { const l = { id: uid(), from: r.id, to: o.id, kind: "liefert" }; S.links.push(l); } };
-    }
-    return { text: "Rolle hier ablegen" };
+    return { text: "Rolle verschieben. Zum Verbinden aus einem der Punkte am Rand ziehen." };
   }
   if (t === "c") {
     const r = role(id), p = person(id2);
@@ -940,6 +1002,8 @@ function planDrop(pt, shift) {
 
 const stage = $("#stage");
 stage.addEventListener("pointerdown", (e) => {
+  const port = e.target.closest && e.target.closest("[data-port]");
+  if (port && e.button === 0) { startWire(port.dataset.port, e); return; }
   const tEl = e.target.closest && e.target.closest("[data-k]");
   if (!tEl || e.button !== 0) return;
   const k = tEl.dataset.k, t = k.split("|")[0];
@@ -996,7 +1060,129 @@ addEventListener("pointerup", (e) => endDrag(e, false));
 addEventListener("pointercancel", (e) => endDrag(e, true));
 stage.addEventListener("click", (e) => {
   if (suppressClick) { suppressClick = false; return; }
+  const lk = e.target.closest("[data-link]");
+  if (lk) return openLinkPop(lk.dataset.link);
   if (!e.target.closest("[data-k]") && sel) select(null);
+});
+
+// ---------- Andockpunkte und Kabel ----------
+// Fährt man über eine Rolle, poppen am Rand vier Punkte auf. Aus einem zieht man live ein Kabel
+// zu einer anderen Rolle; beim Loslassen entsteht die Verbindung, ihre Art wählt man im kleinen Popover.
+const gPorts = $("#gPorts"), wireEl = $("#wire"), wireEnd = $("#wireEnd"), linkPop = $("#linkPop");
+const ports = [0, 1, 2, 3].map(() => mk("circle", { class: "port", r: 5, "vector-effect": "non-scaling-stroke", "stroke-width": 1.6 }, gPorts));
+gPorts.insertBefore(wireEl, null); gPorts.appendChild(wireEnd);
+let hoverRole = null, hoverT = null, wire = null, linkPopId = null;
+const zk = () => d3.zoomTransform(stage).k;
+function portRole() { if (wire) return wire.from; if (drag) return null; return hoverRole || (sel && sel.t === "role" ? sel.id : null); }
+function renderPorts() {
+  const id = portRole(), v = id && cur.get("r|" + id), k = zk();
+  ports.forEach((c, i) => {
+    if (!v || v.r < 6 || (wire && i !== wire.i)) { c.classList.remove("on"); return; }
+    const a = (i * Math.PI) / 2;
+    c.setAttribute("cx", (v.x + Math.cos(a) * v.r).toFixed(1));
+    c.setAttribute("cy", (v.y + Math.sin(a) * v.r).toFixed(1));
+    c.setAttribute("r", (5.5 / k).toFixed(2));
+    c.dataset.port = id; c.dataset.i = i;
+    c.classList.add("on");
+  });
+}
+stage.addEventListener("pointermove", (e) => {
+  if (drag || wire || e.pointerType === "touch") return;
+  const pt = worldPoint(e), k = zk();
+  let found = null, best = Infinity;
+  for (const r of S.roles) {
+    const v = cur.get("r|" + r.id); if (!v || v.r < 6) continue;
+    const d = Math.hypot(pt[0] - v.x, pt[1] - v.y) - v.r;
+    if (d < 18 / k && d < best) { best = d; found = r.id; }
+  }
+  if (found) { clearTimeout(hoverT); hoverT = null; if (found !== hoverRole) { hoverRole = found; renderPorts(); } }
+  else if (hoverRole && !hoverT) hoverT = setTimeout(() => { hoverT = null; hoverRole = null; renderPorts(); }, 260);
+});
+function wireTarget(pt) {
+  const k = zk(); let best = null, bd = Infinity;
+  for (const r of S.roles) {
+    if (r.id === wire.from) continue;
+    const v = cur.get("r|" + r.id); if (!v || v.r < 6) continue;
+    const d = Math.hypot(pt[0] - v.x, pt[1] - v.y) - v.r;
+    if (d < 26 / k && d < bd) { bd = d; best = r.id; }
+  }
+  return best;
+}
+function startWire(id, e) {
+  closeLinkPop();
+  wire = { from: id, i: +e.target.dataset.i, to: null };
+  stage.classList.add("dragging");
+  updateWire(e);
+}
+function updateWire(e) {
+  const pt = worldPoint(e), v = cur.get("r|" + wire.from), k = zk();
+  wire.to = wireTarget(pt);
+  const tv = wire.to && cur.get("r|" + wire.to);
+  const w = tv ? wirePath(v, tv, 3, 7) : wirePath(v, { x: pt[0], y: pt[1], r: 0 }, 3, 0);
+  wireEl.setAttribute("d", w.d); wireEl.setAttribute("stroke-width", (2 / k).toFixed(2));
+  wireEnd.setAttribute("cx", w.p1.x); wireEnd.setAttribute("cy", w.p1.y); wireEnd.setAttribute("r", (4 / k).toFixed(2));
+  dropKey = wire.to ? "r|" + wire.to : null;
+  const a = role(wire.from), b = wire.to && role(wire.to);
+  const ex = b && S.links.find((l) => (l.from === a.id && l.to === b.id) || (l.from === b.id && l.to === a.id));
+  setHint(b ? (ex ? `${a.name} und ${b.name} sind schon verbunden. Loslassen zeigt die Verbindung.` : `Loslassen verbindet ${a.name} mit ${b.name}`) : "Zu einer anderen Rolle ziehen", true);
+  renderRings(); renderPorts();
+}
+function endWire(cancel) {
+  const w = wire; wire = null; dropKey = null;
+  stage.classList.remove("dragging");
+  wireEl.setAttribute("d", ""); wireEnd.setAttribute("r", 0);
+  idleHint();
+  if (!cancel && w.to) {
+    const ex = S.links.find((l) => (l.from === w.from && l.to === w.to) || (l.from === w.to && l.to === w.from));
+    if (ex) openLinkPop(ex.id);
+    else { const l = { id: uid(), from: w.from, to: w.to, kind: "liefert" }; change(() => S.links.push(l)); openLinkPop(l.id); }
+  }
+  render();
+}
+addEventListener("pointermove", (e) => { if (wire) updateWire(e); });
+addEventListener("pointerup", () => { if (wire) { endWire(false); suppressClick = true; } });
+addEventListener("pointercancel", () => { if (wire) endWire(true); });
+
+const KIND_ICON = (K) => `<svg width="22" height="10" aria-hidden="true"><path d="M2 5 H18" stroke="currentColor" stroke-width="${K.w + 0.3}" ${K.dash ? 'stroke-dasharray="4 3"' : ""} fill="none"/>${K.arrow ? '<path d="M15 2 L19 5 L15 8" stroke="currentColor" stroke-width="1.4" fill="none"/>' : ""}</svg>`;
+function openLinkPop(id) {
+  linkPopId = id;
+  renderLinkPop();
+  paint();
+  if (lens !== "netz") relayout({ dur: 250 }); else render();
+  placeLinkPop(); linkPop.classList.add("open");
+  setTimeout(placeLinkPop, 300);
+}
+function closeLinkPop() {
+  if (!linkPopId) return;
+  linkPopId = null;
+  linkPop.classList.remove("open");
+  paint();
+  if (lens !== "netz") relayout({ dur: 250 }); else render();
+}
+function renderLinkPop() {
+  const l = S.links.find((x) => x.id === linkPopId);
+  if (!l) return closeLinkPop();
+  linkPop.innerHTML = `<span style="font-size:12px;color:var(--ink-dim);padding:0 6px 0 4px;white-space:nowrap">${esc(role(l.from).name)}</span>`
+    + Object.entries(KINDS).map(([k, K]) => `<button data-kind="${k}" aria-pressed="${l.kind === k}">${KIND_ICON(K)}${K.label}</button>`).join("")
+    + `<span style="font-size:12px;color:var(--ink-dim);padding:0 4px 0 6px;white-space:nowrap">${esc(role(l.to).name)}</span><span class="sep"></span>`
+    + `<button data-flip title="Richtung umkehren" aria-label="Richtung umkehren">⇄</button><button class="rm" data-rm title="Verbindung löschen">Löschen</button>`;
+}
+function placeLinkPop() {
+  const l = S.links.find((x) => x.id === linkPopId), a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
+  if (!a || !b) return;
+  const m = wirePath(a, b, 3, 7).m;
+  const t = d3.zoomTransform(stage);
+  const x = Math.max(linkPop.offsetWidth / 2 + 8, Math.min(innerWidth - linkPop.offsetWidth / 2 - 8, t.applyX(m.x)));
+  const y = Math.max(linkPop.offsetHeight + 70, t.applyY(m.y));
+  linkPop.style.left = x + "px"; linkPop.style.top = y + "px";
+}
+linkPop.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const id = linkPopId, l = S.links.find((x) => x.id === id); if (!l) return;
+  if (b.dataset.kind) change(() => { l.kind = b.dataset.kind; });
+  if (b.dataset.flip !== undefined) change(() => { [l.from, l.to] = [l.to, l.from]; });
+  if (b.dataset.rm !== undefined) { change(() => { S.links = S.links.filter((x) => x.id !== id); }); return closeLinkPop(); }
+  renderLinkPop(); paint(); render(); placeLinkPop();
 });
 
 stage.addEventListener("dblclick", (e) => {
@@ -1149,7 +1335,7 @@ function renderPanel() {
     h += `<div class="chips">${S.people.map((p) => `<button class="chip" data-toggle="${p.id}" aria-pressed="${r.people.includes(p.id)}">${esc(p.name)}</button>`).join("")}<button class="chip" data-newperson>+ Person</button></div></section>
       <section><label class="h">Beziehungen</label>`;
     const rel = S.links.filter((l) => l.from === r.id || l.to === r.id);
-    if (!rel.length) h += `<p style="margin:0 0 4px;color:var(--ink-dim);font-size:12.5px">Noch keine. Im Netz eine Rolle auf eine andere ziehen oder hier wählen.</p>`;
+    if (!rel.length) h += `<p style="margin:0 0 4px;color:var(--ink-dim);font-size:12.5px">Noch keine. Fahr über die Rolle und zieh aus einem Punkt am Rand eine Linie zu einer anderen, oder wähl sie hier.</p>`;
     for (const l of rel) {
       const out = l.from === r.id, o = role(out ? l.to : l.from);
       const opts = Object.entries(KINDS).map(([k, K]) => `<option value="${k}" ${k === l.kind ? "selected" : ""}>${out ? K.label : inverse(k)}</option>`).join("");
@@ -1249,6 +1435,7 @@ qEl.addEventListener("keydown", (e) => {
 resEl.addEventListener("click", (e) => { const b = e.target.closest(".res"); if (b) pickResult(+b.dataset.i); });
 document.addEventListener("pointerdown", (e) => {
   if (!e.target.closest(".search")) resEl.classList.remove("open");
+  if (linkPopId && !e.target.closest("#linkPop") && !e.target.closest("[data-link]")) closeLinkPop();
   for (const [btn, pop] of [["#gapsBtn", "#gapsPop"], ["#addBtn", "#addPop"], ["#menuBtn", "#menuPop"]])
     if (!e.target.closest(btn) && !e.target.closest(pop)) $(pop).classList.remove("open");
 });
@@ -1284,9 +1471,19 @@ $("#gapsPop").addEventListener("click", (e) => {
 });
 
 // ---------- Linsen, Menü, Tastatur ----------
+function placeThumb() {
+  const b = document.querySelector(`.lenses button[data-lens="${lens}"]`), th = document.querySelector(".lenses .thumb");
+  if (b && th) { th.style.left = b.offsetLeft + "px"; th.style.width = b.offsetWidth + "px"; }
+}
+addEventListener("resize", placeThumb);
+$("#zoomIn").addEventListener("click", () => svg.transition().duration(250).call(zoom.scaleBy, 1.3));
+$("#zoomOut").addEventListener("click", () => svg.transition().duration(250).call(zoom.scaleBy, 1 / 1.3));
+$("#zoomPct").addEventListener("click", () => fit());
 function setLens(l, fitView = true) {
+  if (linkPopId) { linkPopId = null; linkPop.classList.remove("open"); }
   lens = l; writeLS("gefuege.lens", l);
   document.querySelectorAll(".lenses button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lens === l));
+  placeThumb();
   idleHint();
   relayout({ fit: fitView, dur: 900 });
 }
@@ -1408,8 +1605,9 @@ document.addEventListener("keydown", (e) => {
   if (typing) return;
   if (e.key === "/") { e.preventDefault(); qEl.focus(); }
   else if (e.key === "1" || e.key === "2" || e.key === "3") setLens(["kreise", "menschen", "netz"][+e.key - 1]);
+  else if ((e.key === "Delete" || e.key === "Backspace") && linkPopId) { e.preventDefault(); const id = linkPopId; change(() => { S.links = S.links.filter((x) => x.id !== id); }); closeLinkPop(); }
   else if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); removeSel(); }
-  else if (e.key === "Escape") { if (query) { qEl.value = ""; runSearch(); } else select(null); }
+  else if (e.key === "Escape") { if (linkPopId) closeLinkPop(); else if (query) { qEl.value = ""; runSearch(); } else select(null); }
 });
 
 // ---------- Start ----------
@@ -1424,7 +1622,8 @@ save();
 updateGaps();
 idleHint();
 relayout({ instant: true, fit: true });
-document.fonts && document.fonts.ready.then(() => { for (const e of els.values()) e._key = null; render(); });
+placeThumb();
+document.fonts && document.fonts.ready.then(() => { for (const e of els.values()) e._key = null; render(); placeThumb(); });
 </script>
 </body>
 </html>
