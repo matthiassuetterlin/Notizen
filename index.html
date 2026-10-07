@@ -6,7 +6,13 @@
 <title>Notizen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+<script>
+  try {
+    var t = localStorage.getItem("notizen-theme-v1");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
 <style>
 /* Layout: one endless canvas. Bubbles melt under SVG goo filters (like the
    website's grid); labels ride the same pan/zoom; HUD on top, tools below,
@@ -95,7 +101,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   text-align: center;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  line-height: 1.25;
+  line-height: 1.22;
+  letter-spacing: -0.005em;
   color: var(--ink);
   font-family: var(--label-font);
 }
@@ -130,10 +137,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 .tune-choice .ink-dot { display: inline-block; width: 0.7em; height: 0.7em; margin-right: 0.4em; border-radius: 50%; vertical-align: -0.05em; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.5); }
 #tree .drop-root { margin: 0.6rem 0.4rem 0; padding: 0.5rem; border: 1px dashed var(--ink-dim); border-radius: 8px; text-align: center; color: var(--ink-dim); font-size: 12px; }
 #tree .drop-root.drop-into { border-color: var(--ink); color: var(--ink); }
-.d0 { font-size: calc(21px * var(--fs)); line-height: 1.15; letter-spacing: -0.01em; }
-.d1 { font-size: calc(15px * var(--fs)); }
-.d2 { font-size: calc(13px * var(--fs)); }
-.d3 { font-size: calc(12px * var(--fs)); }
 #measure { visibility: hidden; pointer-events: none; overflow-wrap: normal; }
 
 #hud {
@@ -242,6 +245,44 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 }
 .tune-choice button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
+#theme-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
+  right: calc(0.9rem + 50px);
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+#theme-btn svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+#theme-btn .moon { display: none; fill: currentColor; stroke: none; }
+:root[data-dark="1"] #theme-btn .moon { display: block; }
+:root[data-dark="1"] #theme-btn .sun, :root[data-dark="1"] #theme-btn .rays { display: none; }
+.tune-sec { padding-bottom: 0.4rem; border-bottom: 1px solid var(--line); }
+.tune-group { border-bottom: 1px solid var(--line); }
+.tune-group > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 0 0.7rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.tune-group > summary::-webkit-details-marker { display: none; }
+.tune-group > summary::after { content: "+"; font-size: 16px; font-weight: 400; letter-spacing: 0; }
+.tune-group[open] > summary::after { content: "–"; }
+.tune-group[open] { padding-bottom: 0.6rem; }
+.tune-label { padding: 0.45rem 0 0.1rem; }
+.tune-choice.c2, .tune-choice.c4 { grid-template-columns: repeat(2, 1fr); }
 /* Hamburger (same three lines as the website's settings button) */
 #menu-btn {
   position: fixed;
@@ -314,28 +355,29 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 .tune-note { margin: 0.2rem 0 0; color: var(--ink-dim); line-height: 1.45; }
 .preset {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr 32px 32px;
   align-items: center;
   gap: 0.5rem;
   padding: 0.1rem 0;
 }
 .preset-name {
-  padding: 0.35rem 0.5rem;
-  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  align-items: baseline;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  font-size: 13px;
 }
+.preset-name .num { color: var(--ink-dim); }
+.preset-name .sub { grid-column: 2; font-size: 11px; color: var(--ink-dim); }
 .preset-name:hover { background: var(--line); }
-.preset.is-current .preset-name { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
-.preset-def {
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--ink-dim);
-}
-.preset-def[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.preset-del { width: 28px; height: 28px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); }
+.preset.is-current .preset-name { background: var(--line); font-weight: 600; }
+.preset-def { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); border-radius: 8px; }
+.preset-def:hover { color: var(--ink); }
+.preset-def[aria-pressed="true"] { color: var(--ink); }
+.preset-del { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); }
 .preset-del:hover { color: var(--ink); }
 .tune-add {
   width: 100%;
@@ -445,17 +487,27 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   <p id="crumb"></p>
 </header>
 <aside id="tree" aria-label="Struktur" hidden></aside>
+<button type="button" id="theme-btn" aria-label="Hell oder dunkel"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle class="sun" cx="12" cy="12" r="4.2"/><g class="rays"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
 <button type="button" id="menu-btn" aria-label="Einstellungen" aria-expanded="false" aria-controls="panel"><span></span><span></span><span></span></button>
 <aside id="panel" aria-label="Einstellungen" hidden>
   <h2>Einstellungen</h2>
-  <p class="tune-note">Wirken sofort und werden in diesem Browser gespeichert.</p>
-  <h3>Gespeichert</h3>
-  <div id="presets"></div>
-  <button type="button" id="preset-add" class="tune-add">Aktuelle Einstellungen speichern</button>
-  <p class="tune-note">Klick auf einen Namen lädt ihn. „Standard“ gilt beim Öffnen und für „Standard wiederherstellen“.</p>
+  <section class="tune-sec">
+    <h3>Ansicht</h3>
+    <div class="tune-choice" id="theme-choice" role="group" aria-label="Ansicht">
+      <button type="button" id="theme-light">Hell</button>
+      <button type="button" id="theme-dark">Dunkel</button>
+      <button type="button" id="theme-system">Wie System</button>
+    </div>
+  </section>
+  <section class="tune-sec">
+    <h3>Stile</h3>
+    <div id="presets"></div>
+    <button type="button" id="preset-add" class="tune-add">+ Aktuellen Stil speichern</button>
+    <p class="tune-note">Klick lädt einen Stil. Der Stern macht ihn zum Standard beim Öffnen.</p>
+  </section>
   <div id="tune"></div>
   <div class="tune-actions">
-    <button type="button" id="tune-reset">Standard wiederherstellen</button>
+    <button type="button" id="tune-reset">Auf Standard zurücksetzen</button>
   </div>
 </aside>
 
@@ -534,12 +586,39 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     outlineColor: "", // empty = theme colour (white in dark mode)
     dots: true,
     font: 1,
+    grow: 1, // how much bigger the text of bubbles with much inside gets
+    textPad: 1, // air between text and contour
+    weight: "kraeftig", // normal | kraeftig
+    shade: 0, // 3D: light and shadow on the bubbles (0 = flat)
     family: "sans", // sans | serif | mono
-    palette: "pastell", // pastell | kraeftig | erdig
+    palette: "pastell", // pastell | rose | kueste | mono
     ink: "graphit", // graphit | tinte | sepia
   };
   const SPEC = [
-    ["Bewegung"],
+    ["Farben", true],
+    ["palette", "Farbset der Bubbles", [["pastell", "Pastell"], ["rose", "Rosé"], ["kueste", "Küste"], ["mono", "Mono"]]],
+    ["ink", "Schriftfarbe", [["graphit", "Graphit"], ["tinte", "Tinte"], ["sepia", "Sepia"]]],
+    ["blend", "Farbverlauf", 0, 60, 0.5],
+    ["Text", true],
+    ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
+    ["weight", "Stärke", [["normal", "Normal"], ["kraeftig", "Kräftig"]]],
+    ["font", "Schriftgröße", 0.7, 1.8, 0.05],
+    ["grow", "Größer, je mehr darin liegt", 0, 2, 0.05],
+    ["textPad", "Abstand zur Kontur", 0.5, 2.5, 0.05],
+    ["Form", false],
+    ["shade", "Plastisch (3D)", 0, 1, 0.05],
+    ["size", "Bubble-Größe", 0.6, 2.5, 0.05],
+    ["pad", "Innenabstand", 0.3, 6, 0.05],
+    ["goo", "Verschmelzen", 2, 40, 0.5],
+    ["threshold", "Tropfenfülle (links = voller)", 0.12, 0.85, 0.01],
+    ["sharp", "Kantenschärfe", 4, 120, 1],
+    ["bridge", "Breite der Verbindung", 0.2, 4, 0.05],
+    ["dots", "Punktraster im Hintergrund"],
+    ["Kontur", false],
+    ["outline", "Kontur zeigen"],
+    ["outlineW", "Konturstärke", 0.2, 10, 0.1],
+    ["outlineColor", "Konturfarbe"],
+    ["Bewegung", false],
     ["attract", "Anziehung nach innen", 0, 0.03, 0.001],
     ["repel", "Abstoßung", 0.01, 0.5, 0.01],
     ["gap", "Abstand zwischen Bubbles", 0.3, 5, 0.05],
@@ -547,42 +626,56 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     ["linkGap", "Abstand verbundener Bubbles", 0, 5, 0.05],
     ["friction", "Gleiten", 0.4, 0.97, 0.01],
     ["throw", "Schwung beim Loslassen", 0, 1.5, 0.05],
-    ["Form"],
-    ["goo", "Verschmelzen", 2, 40, 0.5],
-    ["threshold", "Tropfenfülle (links = voller)", 0.12, 0.85, 0.01],
-    ["sharp", "Kantenschärfe", 4, 120, 1],
-    ["bridge", "Breite der Verbindung", 0.2, 4, 0.05],
-    ["size", "Bubble-Größe", 0.6, 2.5, 0.05],
-    ["pad", "Innenabstand", 0.3, 6, 0.05],
-    ["Farbe und Kontur"],
-    ["blend", "Farbverlauf", 0, 60, 0.5],
-    ["outline", "Kontur zeigen"],
-    ["outlineW", "Konturstärke", 0.2, 10, 0.1],
-    ["outlineColor", "Konturfarbe"],
-    ["palette", "Farbset der Bubbles", [["pastell", "Pastell"], ["rose", "Rosé"], ["kueste", "Küste"]]],
-    ["dots", "Punktraster im Hintergrund"],
-    ["Text"],
-    ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
-    ["ink", "Schriftfarbe", [["graphit", "Graphit"], ["tinte", "Tinte"], ["sepia", "Sepia"]]],
-    ["font", "Schriftgröße", 0.7, 1.8, 0.05],
   ];
   const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
-  // Saved settings: { list: [{ name: "01", values }], def: "01" | null }
+  // Styles: three built in, then the ones saved here; numbered by position.
+  // { list: [{ id, values }], def: id | null }
+  const STYLES = [
+    {
+      id: "b1",
+      name: "Bunt",
+      note: "farbig, flach, klare Linie",
+      values: { palette: "kueste", shade: 0, outline: true, outlineW: 3, outlineColor: "", family: "sans", weight: "kraeftig", ink: "graphit", dots: true, blend: 17, goo: 17, threshold: 0.57, sharp: 60 },
+    },
+    {
+      id: "b2",
+      name: "Monochrom",
+      note: "Grautöne, Haarlinie, Serifenschrift",
+      values: { palette: "mono", shade: 0, outline: true, outlineW: 1.4, outlineColor: "", family: "serif", weight: "normal", ink: "graphit", dots: false, blend: 6, goo: 12, threshold: 0.6, sharp: 90 },
+    },
+    {
+      id: "b3",
+      name: "Plastisch",
+      note: "weiche Farben, Licht und Schatten, ohne Linie",
+      values: { palette: "rose", shade: 0.85, outline: false, family: "sans", weight: "kraeftig", ink: "tinte", dots: false, blend: 24, goo: 22, threshold: 0.5, sharp: 50 },
+    },
+  ];
   const PRESET_STORE = "notizen-presets-v1";
   let presets = { list: [], def: null };
   try {
     const p = JSON.parse(localStorage.getItem(PRESET_STORE) || "null");
-    if (p && Array.isArray(p.list)) presets = { list: p.list.filter((x) => x && x.name && x.values), def: p.def || null };
+    if (p && Array.isArray(p.list)) {
+      // Earlier entries were named 01, 02, …; they keep that as their id
+      const list = p.list.filter((x) => x && x.values).map((x) => ({ id: x.id || "c" + x.name, values: x.values }));
+      const ids = new Set([...STYLES.map((x) => x.id), ...list.map((x) => x.id)]);
+      const def = p.def && !ids.has(p.def) && ids.has("c" + p.def) ? "c" + p.def : p.def;
+      presets = { list, def: ids.has(def) ? def : null };
+    }
   } catch (e) {
     /* none saved */
   }
+  const styleValues = (st) => (st.values && STYLES.includes(st) ? { ...DEFAULTS, ...st.values } : st.values);
+  const allStyles = () => [...STYLES, ...presets.list];
   const clean = (v) => {
     const out = {};
     for (const k in DEFAULTS) out[k] = v && k in v && typeof v[k] === typeof DEFAULTS[k] ? v[k] : DEFAULTS[k];
     return out;
   };
   // The base: the saved settings marked "Standard", else the built-in values
-  const base = () => clean(presets.list.find((x) => x.name === presets.def)?.values);
+  const base = () => {
+    const st = allStyles().find((x) => x.id === presets.def);
+    return clean(st ? styleValues(st) : null);
+  };
   const T = base();
   try {
     const cur = JSON.parse(localStorage.getItem(TUNE_STORE) || "null");
@@ -594,9 +687,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   // Per nesting depth (0 = main bubble)
   const SIG_K = [1, 0.67, 0.55, 0.45]; // goo of the hairline, × T.goo
   const MIN_R = [64, 36, 28, 24];
-  const PARENT_W = [180, 120, 100, 90];
   const PAD = [18, 12, 10, 9];
-  const LABEL_TOP = 16;
   const dd = (d) => Math.min(d, 3);
   const sig = (d) => T.goo * SIG_K[dd(d)];
 
@@ -607,6 +698,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     rose: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"],
     // Mint, sea blue, peach and sand (after the "Serene Coastline" and "Sunset Glow" moods)
     kueste: ["#d1e8e2", "#a9d6e5", "#9cc5c9", "#6fa8b0", "#ffe8d6", "#ffcf8f", "#d9b39c", "#e9e4d8"],
+    // Warm greys, light to dark
+    mono: ["#f3f2ef", "#e7e5e0", "#dad7d1", "#cdc9c2", "#bfbab2", "#aea9a0", "#98938a", "#7d786f"],
   };
   // Earlier sets, so saved colours and settings move over slot by slot
   const LEGACY = {
@@ -646,6 +739,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   // --- Structure ------------------------------------------------------------
   let kids = new Map();
   let depthOf = new Map();
+  let nDesc = new Map(); // how many bubbles sit (directly or deeper) inside a bubble
 
   // a is an ancestor of b
   function isAncestor(a, b) {
@@ -690,6 +784,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       return d;
     };
     for (const b of bubbles.values()) dep(b, 0);
+    nDesc = new Map();
+    for (const b of bubbles.values()) nDesc.set(b.id, subtree(b).size - 1);
     orderDirty = true;
   }
 
@@ -771,46 +867,70 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 
   // --- Text measuring ---------------------------------------------------------
   const mcache = new Map();
-  function measure(text, d, w) {
-    const key = d + "|" + w + "|" + text;
+  // Type grows with what a bubble holds: a leaf reads small, a bubble with
+  // many notes inside reads like a headline.
+  function typeOf(b) {
+    const n = nDesc.get(b.id) || 0;
+    const d = depthOf.get(b.id) || 0;
+    const px = Math.min(46, (15 + (d === 0 ? 2 : 0)) * T.font * (1 + T.grow * 0.28 * Math.log2(1 + n)));
+    const strong = T.weight === "kraeftig";
+    let wt = n ? (strong ? 700 : 600) : strong ? 500 : 400;
+    if (T.family === "mono") wt = Math.min(wt, 500);
+    return { px: Math.round(px * 2) / 2, wt };
+  }
+  // Air between text and contour
+  const marginOf = (px) => (0.6 * px + 8 + (T.outline ? T.outlineW * 0.6 : 0)) * T.textPad;
+  const range = document.createRange();
+  function measure(text, ty, w) {
+    const key = ty.px + "|" + ty.wt + "|" + w + "|" + text;
     let m = mcache.get(key);
     if (m === undefined) {
-      measurer.className = "d" + d;
+      measurer.style.fontSize = ty.px + "px";
+      measurer.style.fontWeight = ty.wt;
       measurer.style.width = w + "px";
       measurer.textContent = text || "Notiz";
-      m = { h: measurer.offsetHeight, fits: measurer.scrollWidth <= w + 1 };
+      // Widest line actually used, so short lines do not reserve room
+      range.selectNodeContents(measurer);
+      let tw = 0;
+      for (const r of range.getClientRects()) tw = Math.max(tw, r.width);
+      m = { h: measurer.offsetHeight, tw: Math.min(w, Math.ceil(tw)), fits: measurer.scrollWidth <= w + 1 };
       mcache.set(key, m);
     }
     return m;
   }
-  // Smallest circle that holds the text of a bubble without children
-  function leafSize(text, d) {
-    d = dd(d);
-    const key = "L" + d + "|" + text;
+  // Smallest circle that holds the text of a bubble without children, with air all round
+  function leafSize(text, ty, minR) {
+    const mg = marginOf(ty.px);
+    const key = "L" + ty.px + "|" + ty.wt + "|" + mg + "|" + minR + "|" + text;
     let s = mcache.get(key);
     if (!s) {
-      let r = Math.round(MIN_R[d] * T.size);
-      let w = Math.round(r * 1.36);
-      search: for (; r < 520; r += 3) {
-        for (const f of [1.36, 1.55, 1.75, 1.2]) {
-          const tw = Math.round(r * f);
-          const m = measure(text, d, tw);
-          if (m.fits && Math.hypot(tw / 2, m.h / 2) <= r - 6) {
-            w = tw;
-            break search;
+      let best = null;
+      for (let r = Math.round(minR); r < 700 && !best; r += 3) {
+        for (const f of [1.6, 1.4, 1.25, 1.1]) {
+          const w = Math.round((r - mg) * f);
+          if (w < ty.px * 2) continue;
+          const m = measure(text, ty, w);
+          if (m.fits && Math.hypot(m.tw / 2, m.h / 2) <= r - mg) {
+            best = { r, w: w + 2, h: m.h };
+            break;
           }
         }
       }
-      if (r >= 520) w = Math.round(r * 1.36);
-      s = { r, w: w + 2, h: measure(text, d, w).h };
+      s = best || { r: 700, w: 600, h: measure(text, ty, 600).h };
       mcache.set(key, s);
     }
     return s;
   }
-  function parentLabel(text, d) {
-    d = dd(d);
-    const w = Math.round(PARENT_W[d] * T.font);
-    return { w, h: measure(text, d, w).h };
+  function parentLabel(text, ty) {
+    const w = Math.round(ty.px * 10);
+    const m = measure(text, ty, w);
+    return { w, h: m.h, tw: m.tw, mg: marginOf(ty.px) };
+  }
+  // Distance from the top of the circle to the top of the label, so the
+  // widest line clears the contour by the margin
+  function labelTop(r, L) {
+    const half = L.tw / 2 + L.mg;
+    return Math.max(L.mg * 0.8, r - Math.sqrt(Math.max(0, r * r - half * half)) + L.mg * 0.35);
   }
 
   // --- Physics ------------------------------------------------------------------
@@ -836,11 +956,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     for (const b of all) {
       const d = depthOf.get(b.id);
       b._own = (kids.get(b.id) || []).filter((c) => c.parents.length === 1 && !(moving && moving.has(c)));
+      b._type = typeOf(b);
       if (b._own.length) {
-        b._label = parentLabel(b.text, d);
-        b._off = (LABEL_TOP + b._label.h + 8 - PAD[dd(d)] * T.pad) / 2;
+        b._label = parentLabel(b.text, b._type);
+        b._lt = labelTop(b.r, b._label);
+        b._off = (b._lt + b._label.h + b._label.mg * 0.6 - PAD[dd(d)] * T.pad) / 2;
       } else {
-        b._label = leafSize(b.text, d);
+        b._label = leafSize(b.text, b._type, MIN_R[dd(d)] * T.size);
       }
       b._linked = null;
     }
@@ -932,6 +1054,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const ty = b.y + b._off;
       for (const c of b._own) force(c, (tx - c.x) * T.attract, (ty - c.y) * T.attract);
       repel(b._own, sig(d + 1) * 3 * T.gap);
+      // Keep children off the label
+      const L = b._label;
+      const x0 = b.x - L.tw / 2 - L.mg * 0.5;
+      const x1 = b.x + L.tw / 2 + L.mg * 0.5;
+      const y0 = b.y - b.r + b._lt - L.mg * 0.5;
+      const y1 = b.y - b.r + b._lt + L.h + L.mg * 0.5;
+      for (const c of b._own) {
+        const qx = Math.max(x0, Math.min(x1, c.x));
+        const qy = Math.max(y0, Math.min(y1, c.y));
+        let dx = c.x - qx;
+        let dy = c.y - qy;
+        let dist = Math.hypot(dx, dy);
+        const need = c.r + 4;
+        if (dist >= need) continue;
+        if (dist < 0.01) {
+          dx = 0;
+          dy = 1;
+          dist = 1;
+        }
+        const f = Math.min(10, (need - dist) * 0.35) / dist;
+        force(c, dx * f, dy * f);
+      }
     }
     repel(all.filter((b) => !b.parents.length), sig(0) * 2.6 * T.gap);
 
@@ -969,8 +1113,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       let target;
       if (b._own.length) {
         const L = b._label;
-        const h = LABEL_TOP + L.h;
-        target = Math.max(MIN_R[d] * T.size * 1.2, (L.w * L.w) / 4 / (2 * h) + h / 2);
+        const half = L.tw / 2 + L.mg;
+        target = Math.max(MIN_R[d] * T.size * 1.2, half * 1.22, (L.h + 2 * L.mg) * 1.25);
         for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d] * T.pad);
       } else {
         target = b._label.r;
@@ -1013,7 +1157,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     el("feComposite", { in: "cb", in2: "base", operator: "over", result: "col" }, f);
     el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: sig(0), result: "ab" }, f);
     el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, f);
-    el("feComposite", { in: "col", in2: "shape", operator: "in" }, f);
+    el("feComposite", { in: "col", in2: "shape", operator: "in", result: "body" }, f);
+    // 3D: a soft shadow under everything
+    if (T.shade > 0) el("feDropShadow", { in: "body", dx: 0, dy: 6 * T.shade + 2, stdDeviation: 6 + 8 * T.shade, "flood-color": "#000", "flood-opacity": (0.1 + 0.16 * T.shade).toFixed(3) }, f);
 
     const line = T.outlineColor || cssColor("--outline", "#595959");
     for (let d = 0; d < 4; d++) {
@@ -1025,9 +1171,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(40, edge), result: "inner" }, g);
       el("feFlood", { "flood-color": line, result: "ink" }, g);
       el("feComposite", { in: "ink", in2: "shape", operator: "in", result: "tint" }, g);
-      el("feComposite", { in: "tint", in2: "inner", operator: "out" }, g);
+      el("feComposite", { in: "tint", in2: "inner", operator: "out", result: "ring" }, g);
+      const layers = [];
+      if (T.shade > 0) {
+        // 3D: the blurred edge works as a height map; light from top left
+        const k = T.shade;
+        const scale = (2 + 4 * k).toFixed(2);
+        const lo = el("feDiffuseLighting", { in: "ab", surfaceScale: scale, diffuseConstant: 1, "lighting-color": "#ffffff", result: "diff" }, g);
+        el("feDistantLight", { azimuth: 225, elevation: 48 }, lo);
+        // Dark where the surface turns away from the light
+        el("feColorMatrix", { in: "diff", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ${(-0.55 * k).toFixed(3)} 0 0 0 ${(0.55 * k * 0.92).toFixed(3)}`, result: "dark" }, g);
+        el("feComposite", { in: "dark", in2: "shape", operator: "in", result: "shadow" }, g);
+        const hi = el("feSpecularLighting", { in: "ab", surfaceScale: scale, specularConstant: (0.7 * k).toFixed(3), specularExponent: 16, "lighting-color": "#ffffff", result: "spec" }, g);
+        el("feDistantLight", { azimuth: 225, elevation: 40 }, hi);
+        el("feComposite", { in: "spec", in2: "shape", operator: "in", result: "light" }, g);
+        layers.push("shadow", "light");
+      }
+      if (T.outline) layers.push("ring");
+      if (layers.length) {
+        const mg = el("feMerge", {}, g);
+        for (const r of layers) el("feMergeNode", { in: r }, mg);
+      } else el("feFlood", { "flood-opacity": 0 }, g);
     }
-    linesG.style.display = T.outline ? "" : "none";
     svg.classList.toggle("has-dots", !!T.dots);
     document.documentElement.style.setProperty("--fs", T.font);
     themeDark = luminance(toHex(cssColor("--bg", "#ffffff"))) < 0.5;
@@ -1163,10 +1328,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
       const col = colorOf(b);
       const tone = (col ? luminance(col) > 0.5 : !themeDark) ? " on-light" : " on-dark";
       lab.className = `label d${dd(d)}${tone}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
-      const S = b._label || leafSize(b.text, d);
+      const ty = b._type || typeOf(b);
+      const S = b._label || leafSize(b.text, ty, MIN_R[dd(d)] * T.size);
+      const isParent = b._own && b._own.length;
       const left = b.x - S.w / 2;
-      const top = b._own && b._own.length ? b.y - b.r + LABEL_TOP : b.y - S.h / 2;
+      const top = isParent ? b.y - b.r + labelTop(b.r, S) : b.y - S.h / 2;
       lab.style.width = S.w + "px";
+      lab.style.fontSize = ty.px + "px";
+      lab.style.fontWeight = ty.wt;
       lab.style.zIndex = String(d + 1);
       lab.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
     }
@@ -1896,8 +2065,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const panel = $("panel");
   const menuBtn = $("menu-btn");
   const tuneEl = $("tune");
-  const LOOK = new Set(["goo", "threshold", "sharp", "blend", "outline", "outlineW", "outlineColor", "dots", "font", "family", "ink"]);
-  const SIZE = new Set(["size", "font", "family"]);
+  const LOOK = new Set(["goo", "threshold", "sharp", "blend", "outline", "outlineW", "outlineColor", "dots", "font", "family", "ink", "shade"]);
+  const SIZE = new Set(["size", "font", "family", "grow", "textPad", "weight"]);
   const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : step >= 0.1 ? v.toFixed(1) : step >= 0.01 ? v.toFixed(2) : v.toFixed(3));
   const inputs = {};
 
@@ -1919,21 +2088,26 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   }
   function buildPanel() {
     tuneEl.textContent = "";
+    let group = tuneEl;
     for (const row of SPEC) {
-      if (row.length === 1) {
-        const h = document.createElement("h3");
-        h.textContent = row[0];
-        tuneEl.appendChild(h);
+      if (row.length === 2) {
+        group = document.createElement("details");
+        group.className = "tune-group";
+        group.open = row[1];
+        const sm = document.createElement("summary");
+        sm.textContent = row[0];
+        group.appendChild(sm);
+        tuneEl.appendChild(group);
         continue;
       }
       const [key, label, min, max, step] = row;
       if (Array.isArray(min)) {
         const h = document.createElement("div");
-        h.className = "tune-row";
+        h.className = "tune-label";
         h.textContent = label;
-        tuneEl.appendChild(h);
+        group.appendChild(h);
         const box = document.createElement("div");
-        box.className = "tune-choice";
+        box.className = "tune-choice c" + min.length;
         box.setAttribute("role", "group");
         box.setAttribute("aria-label", label);
         for (const [value, text] of min) {
@@ -1960,7 +2134,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         box._choice = true;
         box._key = key;
         inputs[key] = box;
-        tuneEl.appendChild(box);
+        group.appendChild(box);
         continue;
       }
       const wrap = document.createElement("div");
@@ -2005,7 +2179,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         wrap.appendChild(inp);
       }
       inputs[key] = inp;
-      tuneEl.appendChild(wrap);
+      group.appendChild(wrap);
     }
     syncPanel();
   }
@@ -2073,62 +2247,93 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
   function renderPresets() {
     presetsEl.textContent = "";
-    if (!presets.list.length) {
-      const p = document.createElement("p");
-      p.className = "tune-note";
-      p.textContent = "Noch nichts gespeichert.";
-      presetsEl.appendChild(p);
-    }
-    for (const pr of presets.list) {
+    allStyles().forEach((st, i) => {
+      const own = !STYLES.includes(st);
+      const values = styleValues(st);
       const row = document.createElement("div");
-      row.className = "preset" + (same(T, clean(pr.values)) ? " is-current" : "");
+      row.className = "preset" + (same(T, clean(values)) ? " is-current" : "");
       const nm = document.createElement("button");
       nm.type = "button";
       nm.className = "preset-name";
-      nm.textContent = pr.name;
-      nm.title = `Einstellungen ${pr.name} laden`;
-      nm.addEventListener("click", () => setAll(pr.values));
+      nm.id = "style-" + (i + 1);
+      const num = document.createElement("span");
+      num.className = "num";
+      num.textContent = String(i + 1);
+      const title = document.createElement("span");
+      title.textContent = own ? `Eigener Stil` : st.name;
+      nm.append(num, title);
+      if (!own) {
+        const sub = document.createElement("span");
+        sub.className = "sub";
+        sub.textContent = st.note;
+        nm.appendChild(sub);
+      }
+      nm.title = `Stil ${i + 1} laden`;
+      nm.addEventListener("click", () => setAll(values));
       const def = document.createElement("button");
       def.type = "button";
       def.className = "preset-def";
-      def.textContent = "Standard";
-      def.setAttribute("aria-pressed", String(presets.def === pr.name));
-      def.title = presets.def === pr.name ? "Nicht mehr als Standard verwenden" : "Als Standard verwenden";
+      const isDef = presets.def === st.id;
+      def.textContent = isDef ? "★" : "☆";
+      def.setAttribute("aria-pressed", String(isDef));
+      def.title = isDef ? "Nicht mehr als Standard verwenden" : "Als Standard beim Öffnen verwenden";
       def.addEventListener("click", () => {
-        presets.def = presets.def === pr.name ? null : pr.name;
+        presets.def = isDef ? null : st.id;
         savePresets();
         renderPresets();
       });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "preset-del";
-      del.textContent = "×";
-      del.setAttribute("aria-label", `${pr.name} löschen`);
-      del.addEventListener("click", () => {
-        presets.list = presets.list.filter((x) => x !== pr);
-        if (presets.def === pr.name) presets.def = null;
-        savePresets();
-        renderPresets();
-      });
-      row.append(nm, def, del);
+      row.append(nm, def);
+      if (own) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "preset-del";
+        del.textContent = "×";
+        del.setAttribute("aria-label", `Stil ${i + 1} löschen`);
+        del.addEventListener("click", () => {
+          presets.list = presets.list.filter((x) => x !== st);
+          if (presets.def === st.id) presets.def = null;
+          savePresets();
+          renderPresets();
+        });
+        row.appendChild(del);
+      }
       presetsEl.appendChild(row);
-    }
+    });
   }
   $("preset-add").addEventListener("click", () => {
-    const n = presets.list.reduce((m, x) => Math.max(m, parseInt(x.name, 10) || 0), 0) + 1;
-    const name = String(n).padStart(2, "0");
-    presets.list.push({ name, values: { ...T } });
+    presets.list.push({ id: "c" + Date.now().toString(36), values: { ...T } });
     savePresets();
     renderPresets();
-    flash(`Einstellungen als ${name} gespeichert`);
+    flash(`Als Stil ${STYLES.length + presets.list.length} gespeichert`);
   });
 
   // --- Theme ----------------------------------------------------------------------
+  const THEME_STORE = "notizen-theme-v1";
+  const darkMq = matchMedia("(prefers-color-scheme: dark)");
+  function setTheme(mode, keep) {
+    if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+    else delete document.documentElement.dataset.theme;
+    if (!keep) {
+      try {
+        localStorage.setItem(THEME_STORE, mode);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  const themeMode = () => document.documentElement.dataset.theme || "system";
+  const isDark = () => themeMode() === "dark" || (themeMode() === "system" && darkMq.matches);
+  for (const m of ["light", "dark", "system"]) $("theme-" + m).addEventListener("click", () => setTheme(m));
+  $("theme-btn").addEventListener("click", () => setTheme(isDark() ? "light" : "dark"));
   const onTheme = () => {
+    document.documentElement.dataset.dark = isDark() ? "1" : "0";
+    for (const m of ["light", "dark", "system"]) $("theme-" + m).setAttribute("aria-pressed", String(themeMode() === m));
+    $("theme-btn").title = isDark() ? "Zur hellen Ansicht" : "Zur dunklen Ansicht";
     buildFilters();
     syncPanel();
   };
-  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", onTheme);
+  onTheme();
+  darkMq.addEventListener?.("change", onTheme);
   new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   addEventListener("resize", () => {
     dirty = true;
