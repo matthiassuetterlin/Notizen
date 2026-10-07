@@ -182,11 +182,9 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .prow:hover .pgrab { opacity: .9; }
 .prow.dragging { background: var(--panel); box-shadow: var(--shadow); position: relative; z-index: 2; cursor: grabbing; }
 .prow.dragging * { cursor: grabbing; }
-.prow .item { flex: 1; display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; }
-.psw { display: inline-flex; }
+.pop .prow .item { flex: 1; display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; }
+.psw { display: inline-flex; flex: none; margin-left: auto; padding-left: 14px; }
 .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-family: var(--text); font-size: 12.5px; color: var(--ink); }
-.pname:empty::before { content: attr(data-ph); color: var(--ink-dim); opacity: 0; }
-.prow:hover .pname:empty::before { opacity: .45; }
 .pname-in { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 6px; outline: none; }
 .pren { opacity: 0; }
 .prow:hover .pren, .pren:focus-visible { opacity: .6; }
@@ -440,9 +438,16 @@ const SETS = {
 // Werkseinstellung = Matthias' Aussehen vom 07.10.2026; zugleich der erste Speicherplatz 01
 const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
 const DEFAULT_THEME = "light";
-// Gespeicherte Einstellungen: Nummern ergeben sich aus der Reihenfolge, def = Index des Default-Eintrags
-let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME }], def: 0 };
+// Gespeicherte Einstellungen: jeder Eintrag trägt seinen Namen (label) fest mit sich, auch beim Verschieben; def = Index des Default-Eintrags
+let PRESETS = { list: [{ look: { ...DEFAULTS }, theme: DEFAULT_THEME, label: "01" }], def: 0 };
 try { const p = JSON.parse(localStorage.getItem("notizen.presets")); if (p && Array.isArray(p.list)) PRESETS = p; } catch (e) {}
+// ältere Einträge ohne festen Namen: Nummer nach bisheriger Position (+ ggf. vergebener Name)
+if (PRESETS.list.some((p) => !p.label)) {
+  PRESETS.list.forEach((p, i) => { if (!p.label) p.label = String(i + 1).padStart(2, "0") + (p.name ? " " + p.name : ""); delete p.name; });
+  try { localStorage.setItem("notizen.presets", JSON.stringify(PRESETS)); } catch (e) {}
+}
+// neuer Eintrag: nächste Nummer nach der höchsten vorhandenen
+const nextPresetLabel = () => String(PRESETS.list.reduce((m, p) => Math.max(m, parseInt(p.label, 10) || 0), 0) + 1).padStart(2, "0");
 const defaultPreset = () => PRESETS.list[PRESETS.def] || { look: { ...DEFAULTS }, theme: DEFAULT_THEME };
 // das kurz eingeführte Farbset „VAVE“ wurde zurückgenommen: dort gespeicherte Einstellungen wieder auf Pastell
 for (const p of PRESETS.list) if (p.look && p.look.set === "vave") p.look.set = "pastell";
@@ -1963,8 +1968,8 @@ function renderSettings() {
   const seg = (attr, items, cur) => `<div class="seg">${items.map(([v, label, extra]) => `<button data-${attr}="${v}" aria-pressed="${v === cur}">${extra || ""}${label}</button>`).join("")}</div>`;
   const nr = (i) => String(i + 1).padStart(2, "0");
   let h = `<h4>Gespeichert</h4><div class="presets">
-    <button class="item pdef" data-preset-default title="Lädt den Eintrag mit Haken">Default <span>${PRESETS.list.length ? nr(PRESETS.def) + (PRESETS.list[PRESETS.def]?.name ? " · " + esc(PRESETS.list[PRESETS.def].name) : "") : "Werkseinstellung"}</span></button>
-    ${PRESETS.list.map((p, i) => `<div class="prow" data-pi="${i}"><span class="pgrab" aria-hidden="true">⋮⋮</span><button class="item" data-preset-load="${i}"><span class="pnr">${nr(i)}</span><span class="psw">${(SETS[p.look.set] || SETS.frisch).c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span><span class="pname" data-ph="Name …">${esc(p.name || "")}</span></button><button class="pren" data-preset-ren="${i}" title="Umbenennen (oder Doppelklick)" aria-label="${nr(i)} umbenennen">✎</button><button class="pstar" data-preset-def="${i}" aria-pressed="${i === PRESETS.def}" title="Als Default setzen" aria-label="${nr(i)} als Default setzen">✓</button><button class="pdel" data-preset-del="${i}" title="Löschen" aria-label="${nr(i)} löschen">×</button></div>`).join("")}
+    <button class="item pdef" data-preset-default title="Lädt den Eintrag mit Haken">Default <span>${PRESETS.list[PRESETS.def] ? esc(PRESETS.list[PRESETS.def].label) : "Werkseinstellung"}</span></button>
+    ${PRESETS.list.map((p, i) => `<div class="prow" data-pi="${i}"><span class="pgrab" aria-hidden="true">⋮⋮</span><button class="item" data-preset-load="${i}" title="Klick lädt, nochmal klicken benennt um"><span class="pname">${esc(p.label)}</span><span class="psw">${(SETS[p.look.set] || SETS.frisch).c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span></button><button class="pren" data-preset-ren="${i}" title="Umbenennen" aria-label="${esc(p.label)} umbenennen">✎</button><button class="pstar" data-preset-def="${i}" aria-pressed="${i === PRESETS.def}" title="Als Default setzen" aria-label="${esc(p.label)} als Default setzen">✓</button><button class="pdel" data-preset-del="${i}" title="Löschen" aria-label="${esc(p.label)} löschen">×</button></div>`).join("")}
     <button class="item padd" data-preset-save>+ Aktuelle Einstellungen speichern</button></div>`;
   h += `<h4>Ansicht</h4>` + seg("theme", [["light", "Hell"], ["dark", "Dunkel"], ["system", "Wie System"]], theme);
   h += `<h4>Farbset</h4>` + seg("set", Object.entries(SETS).map(([k, v]) => [k, v.name, `<span class="sws">${v.c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span>`]), T.set);
@@ -2008,8 +2013,8 @@ $("#settings").addEventListener("input", (e) => {
   const b = e.target.dataset.setB;
   if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); render(); }
 });
-// gespeicherte Einstellungen per Ziehen umsortieren; Nummern folgen sofort, der Default-Haken bleibt am Eintrag
-let presetDrag = null, presetDragged = false;
+// gespeicherte Einstellungen per Ziehen umsortieren; Namen und Default-Haken bleiben am Eintrag
+let presetDrag = null, presetDragged = false, presetPicked = null, presetPickedAt = 0;
 $("#settings").addEventListener("pointerdown", (e) => {
   const row = e.target.closest(".prow");
   presetDragged = false;
@@ -2027,7 +2032,6 @@ addEventListener("pointermove", (e) => {
     if (idx < mine && e.clientY < mid) { box.insertBefore(d.row, r); break; }
     if (idx > mine && e.clientY > mid) { box.insertBefore(d.row, r.nextSibling); break; }
   }
-  box.querySelectorAll(".prow .pnr").forEach((n, i) => (n.textContent = String(i + 1).padStart(2, "0")));
 });
 addEventListener("pointerup", () => {
   const d = presetDrag; presetDrag = null;
@@ -2044,14 +2048,14 @@ addEventListener("pointerup", () => {
 function renamePreset(i) {
   const row = $(`#settings .prow[data-pi="${i}"]`), span = row && row.querySelector(".pname"); if (!span) return;
   const inp = document.createElement("input");
-  inp.className = "pname-in"; inp.value = PRESETS.list[i].name || ""; inp.placeholder = "Name …"; inp.maxLength = 40;
+  inp.className = "pname-in"; inp.value = PRESETS.list[i].label; inp.maxLength = 40;
   const box = Object.assign(document.createElement("span"), { className: "item" });
-  box.append(row.querySelector(".pnr"), inp);
+  box.append(inp);
   row.querySelector(".item").replaceWith(box);
   let done = false;
   const end = (ok) => {
     if (done) return; done = true;
-    if (ok) { const v = inp.value.trim(); if (v) PRESETS.list[i].name = v; else delete PRESETS.list[i].name; writeLS("notizen.presets", JSON.stringify(PRESETS)); }
+    if (ok) { const v = inp.value.trim(); if (v) PRESETS.list[i].label = v; writeLS("notizen.presets", JSON.stringify(PRESETS)); }
     renderSettings();
   };
   inp.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") end(true); if (e.key === "Escape") end(false); });
@@ -2069,15 +2073,20 @@ $("#settings").addEventListener("click", (e) => {
   const savePresets = () => writeLS("notizen.presets", JSON.stringify(PRESETS));
   const load = (p) => { T = { ...DEFAULTS, ...p.look }; applyLook(); setTheme(p.theme || "system"); paint(); layoutVersion++; relayout({ dur: 400 }); renderPanel(); };
   if (b.dataset.presetDefault !== undefined) return load(defaultPreset());
-  if (b.dataset.presetLoad && e.detail === 2) return renamePreset(+b.dataset.presetLoad);
-  if (b.dataset.presetLoad) return load(PRESETS.list[+b.dataset.presetLoad]);
-  if (b.dataset.presetSave !== undefined) { PRESETS.list.push({ look: { ...T }, theme: readLS("gefuege.theme") || "system" }); savePresets(); return renderSettings(); }
+  // wie im Finder: erster Klick lädt, ein weiterer Klick auf denselben Eintrag (oder Doppelklick) benennt um
+  if (b.dataset.presetLoad) {
+    const i = +b.dataset.presetLoad, again = presetPicked === PRESETS.list[i] && Date.now() - presetPickedAt < 4000;
+    if (e.detail === 2 || again) { presetPicked = null; return renamePreset(i); }
+    presetPicked = PRESETS.list[i]; presetPickedAt = Date.now();
+    return load(PRESETS.list[i]);
+  }
+  if (b.dataset.presetSave !== undefined) { PRESETS.list.push({ look: { ...T }, theme: readLS("gefuege.theme") || "system", label: nextPresetLabel() }); savePresets(); return renderSettings(); }
   if (b.dataset.presetRen) return renamePreset(+b.dataset.presetRen);
   if (b.dataset.presetDef) { PRESETS.def = +b.dataset.presetDef; savePresets(); return renderSettings(); }
   if (b.dataset.presetDel) {
     const i = +b.dataset.presetDel;
     PRESETS.list.splice(i, 1);
-    // Nummern rücken nach; der Default-Haken bleibt beim selben Eintrag oder geht auf 01
+    // Namen bleiben; der Default-Haken bleibt beim selben Eintrag oder geht auf den obersten
     if (PRESETS.def === i) PRESETS.def = 0; else if (PRESETS.def > i) PRESETS.def--;
     savePresets(); return renderSettings();
   }
