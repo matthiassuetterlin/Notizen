@@ -446,8 +446,11 @@ if (PRESETS.list.some((p) => !p.label)) {
   PRESETS.list.forEach((p, i) => { if (!p.label) p.label = String(i + 1).padStart(2, "0") + (p.name ? " " + p.name : ""); delete p.name; });
   try { localStorage.setItem("notizen.presets", JSON.stringify(PRESETS)); } catch (e) {}
 }
-// neuer Eintrag: nächste Nummer nach der höchsten vorhandenen
-const nextPresetLabel = () => String(PRESETS.list.reduce((m, p) => Math.max(m, parseInt(p.label, 10) || 0), 0) + 1).padStart(2, "0");
+// neuer Eintrag heißt nach Datum und Uhrzeit, z. B. „07.10.2026 | 21.59“
+const nextPresetLabel = () => {
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  return `${z(d.getDate())}.${z(d.getMonth() + 1)}.${d.getFullYear()} | ${z(d.getHours())}.${z(d.getMinutes())}`;
+};
 const defaultPreset = () => PRESETS.list[PRESETS.def] || { look: { ...DEFAULTS }, theme: DEFAULT_THEME };
 // das kurz eingeführte Farbset „VAVE“ wurde zurückgenommen: dort gespeicherte Einstellungen wieder auf Pastell
 for (const p of PRESETS.list) if (p.look && p.look.set === "vave") p.look.set = "pastell";
