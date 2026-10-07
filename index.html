@@ -176,7 +176,11 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 .presets { display: flex; flex-direction: column; gap: 1px; }
 .presets .pdef { font-weight: 600; display: flex; justify-content: space-between; }
 .presets .pdef span { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--accent); }
-.prow { display: flex; align-items: center; gap: 2px; }
+.prow { display: flex; align-items: center; gap: 2px; border-radius: 9px; touch-action: none; }
+.prow .pgrab { width: 14px; font-size: 11px; letter-spacing: -2px; color: var(--ink-dim); opacity: .45; cursor: grab; user-select: none; text-align: center; }
+.prow:hover .pgrab { opacity: .9; }
+.prow.dragging { background: var(--panel); box-shadow: var(--shadow); position: relative; z-index: 2; cursor: grabbing; }
+.prow.dragging * { cursor: grabbing; }
 .prow .item { flex: 1; display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; }
 .psw { display: inline-flex; }
 .psw i { width: 9px; height: 9px; border-radius: 50%; margin-left: -2px; border: 1px solid var(--line); }
@@ -1942,7 +1946,7 @@ function renderSettings() {
   const nr = (i) => String(i + 1).padStart(2, "0");
   let h = `<h4>Gespeichert</h4><div class="presets">
     <button class="item pdef" data-preset-default title="Lädt den Eintrag mit Haken">Default <span>${PRESETS.list.length ? nr(PRESETS.def) : "Werkseinstellung"}</span></button>
-    ${PRESETS.list.map((p, i) => `<div class="prow"><button class="item" data-preset-load="${i}">${nr(i)}<span class="psw">${(SETS[p.look.set] || SETS.frisch).c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span></button><button class="pstar" data-preset-def="${i}" aria-pressed="${i === PRESETS.def}" title="Als Default setzen" aria-label="${nr(i)} als Default setzen">✓</button><button class="pdel" data-preset-del="${i}" title="Löschen" aria-label="${nr(i)} löschen">×</button></div>`).join("")}
+    ${PRESETS.list.map((p, i) => `<div class="prow" data-pi="${i}"><span class="pgrab" aria-hidden="true">⋮⋮</span><button class="item" data-preset-load="${i}"><span class="pnr">${nr(i)}</span><span class="psw">${(SETS[p.look.set] || SETS.frisch).c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span></button><button class="pstar" data-preset-def="${i}" aria-pressed="${i === PRESETS.def}" title="Als Default setzen" aria-label="${nr(i)} als Default setzen">✓</button><button class="pdel" data-preset-del="${i}" title="Löschen" aria-label="${nr(i)} löschen">×</button></div>`).join("")}
     <button class="item padd" data-preset-save>+ Aktuelle Einstellungen speichern</button></div>`;
   h += `<h4>Ansicht</h4>` + seg("theme", [["light", "Hell"], ["dark", "Dunkel"], ["system", "Wie System"]], theme);
   h += `<h4>Farbset</h4>` + seg("set", Object.entries(SETS).map(([k, v]) => [k, v.name, `<span class="sws">${v.c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span>`]), T.set);
@@ -1986,7 +1990,40 @@ $("#settings").addEventListener("input", (e) => {
   const b = e.target.dataset.setB;
   if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); render(); }
 });
+// gespeicherte Einstellungen per Ziehen umsortieren; Nummern folgen sofort, der Default-Haken bleibt am Eintrag
+let presetDrag = null, presetDragged = false;
+$("#settings").addEventListener("pointerdown", (e) => {
+  const row = e.target.closest(".prow");
+  presetDragged = false;
+  if (!row || e.button !== 0 || e.target.closest(".pstar,.pdel")) return;
+  presetDrag = { row, y0: e.clientY, moved: false };
+});
+addEventListener("pointermove", (e) => {
+  const d = presetDrag; if (!d) return;
+  if (!d.moved) { if (Math.abs(e.clientY - d.y0) < 5) return; d.moved = true; d.row.classList.add("dragging"); }
+  const box = d.row.parentNode, rows = [...box.querySelectorAll(".prow")];
+  for (const r of rows) {
+    if (r === d.row) continue;
+    const b = r.getBoundingClientRect(), mid = b.top + b.height / 2;
+    const idx = rows.indexOf(r), mine = rows.indexOf(d.row);
+    if (idx < mine && e.clientY < mid) { box.insertBefore(d.row, r); break; }
+    if (idx > mine && e.clientY > mid) { box.insertBefore(d.row, r.nextSibling); break; }
+  }
+  box.querySelectorAll(".prow .pnr").forEach((n, i) => (n.textContent = String(i + 1).padStart(2, "0")));
+});
+addEventListener("pointerup", () => {
+  const d = presetDrag; presetDrag = null;
+  if (!d || !d.moved) return;
+  presetDragged = true; setTimeout(() => (presetDragged = false), 400);
+  const order = [...d.row.parentNode.querySelectorAll(".prow")].map((r) => +r.dataset.pi);
+  const defItem = PRESETS.list[PRESETS.def];
+  PRESETS.list = order.map((i) => PRESETS.list[i]);
+  PRESETS.def = Math.max(0, PRESETS.list.indexOf(defItem));
+  writeLS("notizen.presets", JSON.stringify(PRESETS));
+  renderSettings();
+});
 $("#settings").addEventListener("click", (e) => {
+  if (presetDragged) { presetDragged = false; e.stopPropagation(); return; }
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.theme) return setTheme(b.dataset.theme);
   if (b.dataset.lineC) { T.lineColor = b.dataset.lineC; applyLook(); render(); renderSettings(); return; }
