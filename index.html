@@ -6,7 +6,7 @@
 <title>Verantwortungsplaner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
 :root {
@@ -31,6 +31,7 @@
   --hover: rgba(0, 0, 0, 0.045);
   --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12);
   --display: "Playfair Display", "Times New Roman", Times, serif;
+  --grotesk: "Space Grotesk", Manrope, system-ui, sans-serif;
   --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
   color-scheme: light;
@@ -448,6 +449,12 @@ for (const p of PRESETS.list) if (p.look && p.look.set === "vave") p.look.set = 
 try {
   const l = JSON.parse(localStorage.getItem("notizen.look"));
   if (l && l.set === "vave") { l.set = "pastell"; localStorage.setItem("notizen.look", JSON.stringify(l)); }
+  // DM Mono als Bubble-Schrift ersetzt durch Space Grotesk
+  if (l && l.font === "mono") { l.font = "grotesk"; localStorage.setItem("notizen.look", JSON.stringify(l)); }
+  if (PRESETS.list.some((p) => p.look && p.look.font === "mono")) {
+    for (const p of PRESETS.list) if (p.look && p.look.font === "mono") p.look.font = "grotesk";
+    localStorage.setItem("notizen.presets", JSON.stringify(PRESETS));
+  }
   if (localStorage.getItem("notizen.vave")) { localStorage.setItem("notizen.presets", JSON.stringify(PRESETS)); localStorage.removeItem("notizen.vave"); }
 } catch (e) {}
 let T = { ...DEFAULTS };
@@ -1963,7 +1970,7 @@ function renderSettings() {
   h += `<h4>Farbset</h4>` + seg("set", Object.entries(SETS).map(([k, v]) => [k, v.name, `<span class="sws">${v.c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span>`]), T.set);
   for (const [group, list] of SLIDERS) {
     h += `<h4>${group}</h4>`;
-    if (group === "Schrift der Bubbles") h += seg("font", [["text", "Manrope"], ["display", "Playfair"], ["mono", "DM Mono"]], T.font);
+    if (group === "Schrift der Bubbles") h += seg("font", [["text", "Manrope"], ["display", "Playfair"], ["grotesk", "Space Grotesk"]], T.font);
     for (const [k, label, min, max, step, fmt] of list) {
       const dis = (k === "line" || k === "edge") && !T.outline ? "disabled" : "";
       h += `<label class="set"><span>${label}</span><output id="o-${k}">${fmt(T[k])}</output><input id="s-${k}" type="range" min="${min}" max="${max}" step="${step}" value="${T[k]}" data-set-k="${k}" ${dis} /></label>`;
@@ -1980,7 +1987,7 @@ function renderSettings() {
 }
 function applyLook(rebuild = true) {
   writeLS("notizen.look", JSON.stringify(T));
-  const fam = T.font === "display" ? "display" : T.font === "mono" ? "mono" : "text";
+  const fam = T.font === "display" ? "display" : T.font === "grotesk" ? "grotesk" : "text";
   document.documentElement.style.setProperty("--label-font", `var(--${fam})`);
   labelFam = getComputedStyle(document.documentElement).getPropertyValue("--" + fam).trim();
   document.body.classList.toggle("nodots", !T.dots);
