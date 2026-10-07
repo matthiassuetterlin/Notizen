@@ -322,7 +322,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   <div id="tools" class="bar" role="toolbar" aria-label="Werkzeuge">
     <button type="button" id="btn-new">Neue Bubble</button>
     <button type="button" id="btn-child" disabled>Unterbubble</button>
-    <button type="button" id="btn-multi" aria-pressed="false" title="Beim Loslassen zusätzlich zuordnen statt verschieben (wie Shift)">Auch zuordnen</button>
+    <button type="button" id="btn-add" aria-pressed="false" title="Beim Loslassen in die Ziel-Bubble einordnen (wie Shift)">Einordnen</button>
+    <button type="button" id="btn-remove" aria-pressed="false" title="Beim Loslassen aus der Bubble lösen, die man verlassen hat (wie Strg)">Herauslösen</button>
     <button type="button" id="btn-del" disabled>Löschen</button>
     <span class="sep" aria-hidden="true"></span>
     <button type="button" id="btn-undo" disabled>Rückgängig</button>
@@ -356,7 +357,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const btn = {
     new: $("btn-new"),
     child: $("btn-child"),
-    multi: $("btn-multi"),
+    add: $("btn-add"),
+    remove: $("btn-remove"),
     del: $("btn-del"),
     undo: $("btn-undo"),
     fit: $("btn-fit"),
@@ -432,13 +434,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
   const PALETTE = ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"];
 
   const IDLE_HINT =
-    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: in eine andere Bubble legen<span class="long"> · Shift beim Loslassen: zusätzlich zuordnen · Entf: löschen · Mittlere Maustaste: Ansicht verschieben</span>';
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · mit Shift: einordnen · mit Strg: herauslösen<span class="long"> · Entf: löschen · Mittlere Maustaste: Ansicht verschieben</span>';
 
   let bubbles = new Map();
   let view = { x: 0, y: 0, k: 1 };
   let selected = null;
   let editing = null;
-  let multiMode = false;
+  let toolMode = ""; // "" | "add" | "remove" (toolbar stand-in for Shift / Strg)
   let drag = null;
   let pan = null;
   let pinch = null;
@@ -1048,7 +1050,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     btn.child.disabled = !selected;
     btn.del.disabled = !selected;
     btn.undo.disabled = !undoStack.length;
-    btn.multi.setAttribute("aria-pressed", String(multiMode));
+    btn.add.setAttribute("aria-pressed", String(toolMode === "add"));
+    btn.remove.setAttribute("aria-pressed", String(toolMode === "remove"));
     colorsEl.hidden = !selected;
     if (selected && bubbles.has(selected.id)) {
       for (const s of colorsEl.querySelectorAll(".swatch")) s.setAttribute("aria-pressed", String((selected.color || "") === s.dataset.color));
@@ -1280,44 +1283,74 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     return best;
   }
 
-  // What a drop would do: "move", "add" (shared), "free" (becomes a main bubble) or "keep"
-  function dropAction(b, t, multi) {
-    if (!t) {
-      if (b.parents.length > 1 && Math.hypot(b.x - drag.bx, b.y - drag.by) < b.r * 2) return "keep";
-      return multi || !b.parents.length ? "keep" : "free";
+  // Plain drag only moves. Shift: put it into the bubble under the pointer.
+  // Strg (also Cmd/Alt): take it out of the bubbles it was dragged out of.
+  function modeOf(e) {
+    if (e.shiftKey) return "add";
+    if (e.ctrlKey || e.metaKey || e.altKey) return "remove";
+    return toolMode;
+  }
+
+  // What a drop would do: { kind, ... } with kind add | deeper | out | keep
+  function dropPlan(b, t, mode, at) {
+    if (mode === "add") {
+      if (!t) return { kind: "keep", why: "none" };
+      if (b.parents.includes(t.id)) return { kind: "keep", why: "already", t };
+      // Deeper inside a bubble it already belongs to: swap for the inner one
+      const outer = b.parents.find((pid) => isAncestor(bubbles.get(pid), t));
+      if (outer) return { kind: "deeper", t, outer };
+      if (b.parents.some((pid) => isAncestor(t, bubbles.get(pid)))) return { kind: "keep", why: "already", t };
+      return { kind: "add", t };
     }
-    if (multi && b.parents.length && !b.parents.includes(t.id)) {
-      const clash = b.parents.some((pid) => {
-        const p = bubbles.get(pid);
-        return !p || isAncestor(p, t) || isAncestor(t, p);
-      });
-      if (!clash) return "add";
+    if (mode === "remove") {
+      const left = b.parents.map((pid) => bubbles.get(pid)).filter((p) => p && Math.hypot(at.x - p.x, at.y - p.y) > p.r);
+      if (!left.length) return { kind: "keep", why: b.parents.length ? "inside" : "main" };
+      let into = null;
+      if (left.length === b.parents.length) {
+        // Stepping out of the last one: land in the surrounding bubble, if dropped there
+        let best = -1;
+        for (const x of bubbles.values()) {
+          if (Math.hypot(at.x - x.x, at.y - x.y) > x.r || !left.some((p) => isAncestor(x, p))) continue;
+          const d = depthOf.get(x.id);
+          if (d > best) {
+            best = d;
+            into = x;
+          }
+        }
+      }
+      return { kind: "out", left, into };
     }
-    if (b.parents.length === 1 && b.parents[0] === t.id) return "keep";
-    return "move";
+    return { kind: "keep", why: "plain" };
   }
 
   function dragHint() {
-    const a = dropAction(drag.b, drag.target, drag.multi);
-    const bn = esc(name(drag.b));
-    const tn = drag.target ? esc(name(drag.target)) : "";
-    if (a === "add") hint(`Loslassen: »${bn}« gehört zusätzlich zu »${tn}«`, true);
-    else if (a === "move") hint(`Loslassen: in »${tn}« legen<span class="long"> · mit Shift zusätzlich zuordnen</span>`, true);
-    else if (a === "free") hint(`Loslassen: »${bn}« wird eine eigene Bubble`, true);
-    else hint(drag.multi ? "Über eine andere Bubble ziehen, um sie zusätzlich zuzuordnen" : "Verschieben", true);
+    const b = drag.b;
+    const p = dropPlan(b, drag.target, drag.mode, drag.last);
+    const bn = esc(name(b));
+    const tn = p.t ? esc(name(p.t)) : "";
+    const list = (xs) => xs.map((x) => "»" + esc(name(x)) + "«").join(" und ");
+    if (p.kind === "add") hint(b.parents.length ? `Loslassen: »${bn}« gehört zusätzlich zu »${tn}«` : `Loslassen: »${bn}« in »${tn}« einordnen`, true);
+    else if (p.kind === "deeper") hint(`Loslassen: »${bn}« in »${tn}« einordnen`, true);
+    else if (p.kind === "out") hint(`Loslassen: »${bn}« aus ${list(p.left)} lösen` + (p.into ? ` und in »${esc(name(p.into))}« legen` : ""), true);
+    else if (drag.mode === "add") hint(p.why === "already" ? `»${bn}« gehört schon zu »${tn}«` : "Über eine Bubble ziehen, in die sie gehören soll", true);
+    else if (drag.mode === "remove") hint(p.why === "main" ? `»${bn}« ist schon eine eigene Bubble` : "Aus der Bubble herausziehen, von der sie gelöst werden soll", true);
+    else hint('Verschieben<span class="long"> · Shift: einordnen · Strg: herauslösen</span>', true);
   }
 
   function drop() {
     const b = drag.b;
-    const t = drag.target;
-    const a = dropAction(b, t, drag.multi);
-    if (a === "add") {
-      b.parents.push(t.id);
-      flash(`»${name(b)}« verbindet jetzt »${b.parents.map((p) => name(bubbles.get(p))).join("« und »")}«`);
-    } else if (a === "move") {
-      b.parents = [t.id];
-    } else if (a === "free") {
-      b.parents = [];
+    const p = dropPlan(b, drag.target, drag.mode, drag.last);
+    if (p.kind === "add") {
+      b.parents.push(p.t.id);
+      flash(b.parents.length > 1 ? `»${name(b)}« verbindet jetzt »${b.parents.map((id) => name(bubbles.get(id))).join("« und »")}«` : `»${name(b)}« liegt jetzt in »${name(p.t)}«`);
+    } else if (p.kind === "deeper") {
+      b.parents = b.parents.map((id) => (id === p.outer ? p.t.id : id));
+      flash(`»${name(b)}« liegt jetzt in »${name(p.t)}«`);
+    } else if (p.kind === "out") {
+      const gone = new Set(p.left.map((x) => x.id));
+      b.parents = b.parents.filter((id) => !gone.has(id));
+      if (!b.parents.length && p.into) b.parents = [p.into.id];
+      flash(`»${name(b)}« ist aus ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`);
     }
     topo();
     // Let it glide on a little with the speed it was thrown at
@@ -1342,6 +1375,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (e.button === 1) e.preventDefault();
   });
   svg.addEventListener("auxclick", (e) => e.preventDefault());
+  svg.addEventListener("contextmenu", (e) => e.preventDefault());
 
   svg.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
@@ -1363,7 +1397,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (pointers.size > 2) return;
     const w = toWorld(e);
     const hit = hitTest(w);
-    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, multi: false, vx: 0, vy: 0 };
+    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, mode: "", vx: 0, vy: 0 };
     else startPan(e);
   });
 
@@ -1398,7 +1432,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
         drag.t = performance.now();
         drag.last = w;
         drag.target = hitTest(w, subtree(drag.b));
-        drag.multi = e.shiftKey || multiMode;
+        drag.mode = modeOf(e);
         dragHint();
         dirty = true;
       }
@@ -1422,7 +1456,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     }
     if (drag && e.pointerId === drag.id) {
       if (drag.moved) {
-        drag.multi = e.shiftKey || multiMode;
+        drag.mode = modeOf(e);
         // A pause before letting go means no throw
         if (performance.now() - (drag.t || 0) > 150) {
           drag.vx = 0;
@@ -1487,10 +1521,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
   }
 
+  const MOD_KEYS = new Set(["Shift", "Control", "Meta", "Alt"]);
   window.addEventListener("keydown", (e) => {
     if (editing || e.target instanceof HTMLInputElement) return;
-    if (e.key === "Shift" && drag && drag.moved) {
-      drag.multi = true;
+    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
+      drag.mode = modeOf(e);
       dragHint();
       return;
     }
@@ -1523,8 +1558,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     }
   });
   window.addEventListener("keyup", (e) => {
-    if (e.key === "Shift" && drag && drag.moved) {
-      drag.multi = multiMode;
+    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
+      drag.mode = modeOf(e);
       dragHint();
     }
   });
@@ -1547,12 +1582,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
     if (editing) labels.get(editing.id)?.blur();
     addChild(p);
   });
-  btn.multi.addEventListener("click", () => {
-    multiMode = !multiMode;
+  const setTool = (m) => {
+    toolMode = toolMode === m ? "" : m;
     updateChrome();
-    if (multiMode) flash("Auch zuordnen ist an: eine Bubble auf eine andere ziehen, um sie beiden zuzuordnen.");
+    if (toolMode === "add") flash("Einordnen ist an: eine Bubble auf die Bubble ziehen, in die sie gehören soll.");
+    else if (toolMode === "remove") flash("Herauslösen ist an: eine Bubble aus ihrer Bubble herausziehen.");
     else hint(IDLE_HINT);
-  });
+  };
+  btn.add.addEventListener("click", () => setTool("add"));
+  btn.remove.addEventListener("click", () => setTool("remove"));
   btn.del.addEventListener("click", () => {
     const b = selected;
     if (!b) return;

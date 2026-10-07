@@ -5,8 +5,10 @@ wie Tropfen ineinanderfließen).
 
 - **Doppelklick** auf die freie Fläche: neue Haupt-Bubble. Doppelklick auf eine Bubble (oder einfach lostippen, wenn sie ausgewählt ist): hineinschreiben. Enter oder Esc beendet, Shift+Enter macht eine neue Zeile.
 - **Klick** wählt eine Bubble aus. Dann: **Entf** löscht sie (ihr Inhalt rutscht eine Ebene nach oben), **Tab** legt eine Unterbubble an, die Farbpunkte färben sie ein. Bubbles ohne eigene Farbe übernehmen die Farbe der Bubble, in der sie liegen; verschiedene Farben fließen als Verlauf ineinander.
-- **Ziehen** in eine andere Bubble: Die Bubble gehört jetzt dorthin (mit allem, was in ihr liegt). Auf die freie Fläche ziehen macht sie wieder zur Haupt-Bubble. Mit Schwung losgelassen gleitet sie ein Stück weiter.
-- **Shift beim Loslassen** (oder „Auch zuordnen“ in der Leiste, z. B. auf dem Tablet): Die Bubble gehört zusätzlich zur Ziel-Bubble. Die beiden Bubbles rücken zusammen und verschmelzen an der Stelle, an der die gemeinsame Bubble sitzt.
+- **Ziehen** verschiebt nur. Mit Schwung losgelassen gleitet eine Bubble ein Stück weiter.
+- **Shift beim Loslassen** über einer Bubble: einordnen. Gehört die gezogene Bubble schon woanders hin, gehört sie jetzt zusätzlich dazu; die beiden Bubbles rücken zusammen und verschmelzen an der Stelle, an der die gemeinsame Bubble sitzt.
+- **Strg beim Loslassen** (auf dem Mac auch Cmd oder Alt): herauslösen. Die Bubble verlässt jede Bubble, aus der sie herausgezogen wurde. Wer aus der letzten herausgezogen und in der umgebenden Bubble losgelassen wird, landet dort, sonst wird sie eine eigene Haupt-Bubble.
+- Auf dem Tablet ersetzen „Einordnen“ und „Herauslösen“ in der Leiste die Tasten.
 - **Mittlere Maustaste** oder Ziehen auf der freien Fläche verschiebt die Ansicht, Mausrad oder zwei Finger zoomen. „Übersicht“ zeigt alles.
 - **Menü oben rechts**: Anziehung, Abstoßung, Gleiten, Verschmelzen, Tropfenform, Farbverlauf, Kontur, Größen und Schrift einstellen.
 - Strg/Cmd+Z macht rückgängig.
