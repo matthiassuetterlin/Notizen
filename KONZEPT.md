@@ -1,4 +1,4 @@
-# Gefüge: Zuständigkeiten als lebendige Karte
+# Notizen: Zuständigkeiten als lebendige Karte
 
 ## Was ich mir angeschaut habe
 

@@ -1,0 +1,2862 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Notizen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+<script>
+  try {
+    var t = localStorage.getItem("notizen-theme-v1");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+<style>
+/* Layout: one endless canvas. Bubbles melt under SVG goo filters (like the
+   website's grid); labels ride the same pan/zoom; HUD on top, tools below,
+   settings slide in from the right. */
+:root {
+  --bg: #ffffff;
+  --ink: rgba(44, 40, 36, 0.82);
+  --ink-dim: rgba(44, 40, 36, 0.48);
+  --mark: #000000;
+  --outline: #595959;
+  --d0: #ffffff;
+  --d1: #f7f6f3;
+  --d2: #efede9;
+  --d3: #e7e4df;
+  --dot: #e6e3de;
+  --panel: rgba(255, 255, 255, 0.94);
+  --line: rgba(0, 0, 0, 0.14);
+  --display: "Playfair Display", "Times New Roman", Times, serif;
+  --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
+  --label-font: var(--text);
+  --fs: 1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
+    --mark: #f4f0ea; --outline: #ffffff; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
+    --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
+  --mark: #f4f0ea; --outline: #ffffff; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
+  --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--text);
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+#canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--bg);
+}
+#canvas.has-dots { background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); }
+#canvas.is-dragging { cursor: grabbing; }
+#canvas.is-panning { cursor: move; }
+
+#labels {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.label, #measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 0;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  line-height: 1.22;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  font-family: var(--label-font);
+}
+.label { outline: none; cursor: text; caret-color: var(--ink); }
+.label.editing { pointer-events: auto; }
+.label.is-empty::before { content: "Notiz"; color: var(--ink-dim); }
+/* Text on a coloured bubble follows the colour, not the theme */
+.label.on-light { color: var(--ink-l, rgba(44, 40, 36, 0.86)); caret-color: var(--ink-l, rgba(44, 40, 36, 0.86)); }
+.label.on-dark { color: var(--ink-d, rgba(250, 247, 242, 0.92)); caret-color: var(--ink-d, rgba(250, 247, 242, 0.92)); }
+#tree .node.drop-into { outline: 1.5px solid var(--ink); outline-offset: -1px; }
+#tree .node.drop-link { outline: 1.5px dashed var(--ink); outline-offset: -1px; background: var(--line); }
+#tree .node { touch-action: none; -webkit-user-select: none; user-select: none; }
+#tree.dragging, #tree.dragging * { cursor: grabbing; }
+.tree-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  max-width: 300px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.tree-ghost .what { display: block; font-weight: 600; }
+.tree-ghost .how { display: block; font-size: 12px; opacity: 0.8; }
+.tree-ghost.link .how { opacity: 1; }
+.tune-choice .ink-dot { display: inline-block; width: 0.7em; height: 0.7em; margin-right: 0.4em; border-radius: 50%; vertical-align: -0.05em; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.5); }
+#tree .drop-root { margin: 0.6rem 0.4rem 0; padding: 0.5rem; border: 1px dashed var(--ink-dim); border-radius: 8px; text-align: center; color: var(--ink-dim); font-size: 12px; }
+#tree .drop-root.drop-into { border-color: var(--ink); color: var(--ink); }
+#measure { visibility: hidden; pointer-events: none; overflow-wrap: normal; }
+
+#hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.9rem) 1.25rem 0;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  pointer-events: none;
+}
+#mark {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--mark);
+}
+#crumb {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tree-btn {
+  pointer-events: auto;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  border-bottom: 1.2px solid var(--ink);
+  padding-bottom: 1px;
+}
+#tree-btn[aria-expanded="true"] { opacity: 0.55; }
+#hud { z-index: 30; }
+
+#tree {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 25;
+  width: min(300px, 100%);
+  padding: calc(env(safe-area-inset-top, 0px) + 3.6rem) 0.75rem calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 13px;
+}
+#tree h3 {
+  margin: 1rem 0.4rem 0.35rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+#tree h3:first-child { margin-top: 0; }
+#tree ul { list-style: none; margin: 0; padding: 0; }
+#tree ul ul { margin-left: 0.55rem; padding-left: 0.6rem; border-left: 1px solid var(--line); }
+#tree .node {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.28rem 0.4rem;
+  border-radius: 6px;
+  text-align: left;
+  line-height: 1.3;
+}
+#tree .node:hover { background: var(--line); }
+#tree .node[aria-current="true"] { background: var(--ink); color: var(--bg); }
+#tree .dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-dim);
+  background: var(--dot-c, transparent);
+  transform: translateY(1px);
+}
+#tree .txt { min-width: 0; overflow-wrap: anywhere; }
+#tree .also { display: block; font-size: 11px; color: var(--ink-dim); }
+#panel .version { margin: 12px 0 4px; font-size: 11px; opacity: 0.55; }
+#tree .node[aria-current="true"] .also { color: inherit; opacity: 0.7; }
+#tree .empty { margin: 0.3rem 0.4rem; color: var(--ink-dim); }
+
+.tune-choice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0.3rem 0; }
+.tune-choice button {
+  padding: 7px 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+}
+.tune-choice button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+#theme-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
+  right: calc(0.9rem + 50px);
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+#theme-btn svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+#theme-btn .moon { display: none; fill: currentColor; stroke: none; }
+:root[data-dark="1"] #theme-btn .moon { display: block; }
+:root[data-dark="1"] #theme-btn .sun, :root[data-dark="1"] #theme-btn .rays { display: none; }
+.tune-sec { padding-bottom: 0.4rem; border-bottom: 1px solid var(--line); }
+.tune-label { padding: 0.45rem 0 0.1rem; }
+.tune-color { display: flex; align-items: center; gap: 0.5rem; }
+.tune-color button { padding: 0.25rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--ink-dim); }
+.tune-color button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+input.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+input.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+input.switch:checked { background: var(--ink); }
+input.switch:checked::after { transform: translateX(16px); }
+.preset-sw { display: inline-block; width: 22px; height: 10px; margin-right: 0.45rem; border-radius: 3px; vertical-align: 0; }
+.tune-choice.c2, .tune-choice.c4 { grid-template-columns: repeat(2, 1fr); }
+/* Hamburger (same three lines as the website's settings button) */
+#menu-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
+  right: 0.9rem;
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+#menu-btn span {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  background: var(--ink);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s;
+}
+#menu-btn[aria-expanded="true"] span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+#menu-btn[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+#menu-btn[aria-expanded="true"] span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  width: min(330px, 100%);
+  padding: calc(env(safe-area-inset-top, 0px) + 4rem) 1.1rem calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+#panel h2 {
+  margin: 0 0 0.25rem;
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--mark);
+}
+#panel h3 {
+  margin: 1.1rem 0 0.35rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.tune-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  padding: 0.3rem 0;
+}
+.tune-row input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--ink); }
+.tune-row input[type="checkbox"] { margin: 0; accent-color: var(--ink); }
+.tune-row input[type="color"] { width: 44px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+.tune-val { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+.tune-note { margin: 0.2rem 0 0; color: var(--ink-dim); line-height: 1.45; }
+.preset {
+  display: grid;
+  grid-template-columns: 1fr 32px 32px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0;
+}
+.preset-name {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  align-items: baseline;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.preset-name .num { color: var(--ink-dim); }
+.preset-name .sub { grid-column: 2; font-size: 11px; color: var(--ink-dim); }
+.preset-name:hover { background: var(--line); }
+.preset.is-current .preset-name { background: var(--line); font-weight: 600; }
+.preset-def { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); border-radius: 8px; }
+.preset-def:hover { color: var(--ink); }
+.preset-def[aria-pressed="true"] { color: var(--ink); }
+.preset-del { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); }
+.preset-del:hover { color: var(--ink); }
+.tune-add {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  text-align: center;
+  border: 1px dashed var(--ink-dim);
+  border-radius: 8px;
+}
+.tune-actions { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
+.tune-actions button {
+  flex: 1;
+  padding: 0.55rem;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+#dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+#hint {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--ink-dim);
+  text-align: center;
+  text-wrap: balance;
+}
+#hint.is-live { color: var(--ink); }
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+#tools button {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+#tools button:hover:not(:disabled) { border-color: var(--ink-dim); }
+#tools button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+#tools button:disabled { opacity: 0.35; cursor: default; }
+#tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px; }
+
+#colors { padding: 6px 8px; gap: 8px; }
+#colors .swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--sw);
+}
+#colors .swatch[aria-pressed="true"] { outline: 1.5px solid var(--ink); outline-offset: 2px; }
+#colors .swatch.none { background: linear-gradient(135deg, var(--d0) 45%, var(--outline) 46%, var(--outline) 54%, var(--d0) 55%); }
+#colors label { position: relative; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px dashed var(--ink-dim); font-size: 14px; color: var(--ink-dim); cursor: pointer; }
+#colors input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+@media (max-width: 640px) {
+  #dock { left: 1rem; right: 1rem; transform: none; width: auto; max-width: none; }
+  #tools .sep { display: none; }
+  #tools button { padding: 7px 9px; font-size: 12px; }
+  #hint .long { display: none; }
+  #tree { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #menu-btn span { transition: none; }
+}
+</style>
+</head>
+<body>
+<svg id="canvas" class="has-dots" aria-label="Bubble-Fläche">
+  <defs id="defs"></defs>
+  <g id="world">
+    <g id="fills"></g>
+    <g id="lines"></g>
+    <g id="overlay"></g>
+  </g>
+</svg>
+<div id="labels"></div>
+<p id="measure" aria-hidden="true"></p>
+
+<header id="hud">
+  <h1 id="mark">Notizen</h1>
+  <button type="button" id="tree-btn" aria-expanded="false" aria-controls="tree">Struktur</button>
+  <p id="crumb"></p>
+</header>
+<aside id="tree" aria-label="Struktur" hidden></aside>
+<button type="button" id="theme-btn" aria-label="Hell oder dunkel"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle class="sun" cx="12" cy="12" r="4.2"/><g class="rays"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+<button type="button" id="menu-btn" aria-label="Einstellungen" aria-expanded="false" aria-controls="panel"><span></span><span></span><span></span></button>
+<aside id="panel" aria-label="Einstellungen" hidden>
+  <h2>Einstellungen</h2>
+  <section class="tune-sec">
+    <h3>Ansicht</h3>
+    <div class="tune-choice" id="theme-choice" role="group" aria-label="Ansicht">
+      <button type="button" id="theme-light">Hell</button>
+      <button type="button" id="theme-dark">Dunkel</button>
+      <button type="button" id="theme-system">Wie System</button>
+    </div>
+  </section>
+  <section class="tune-sec">
+    <h3>Gespeichert</h3>
+    <div id="presets"></div>
+    <button type="button" id="preset-add" class="tune-add">+ Einstellungen speichern</button>
+  </section>
+  <div id="tune"></div>
+  <div class="tune-actions">
+    <button type="button" id="tune-reset">Auf Standard zurücksetzen</button>
+  </div>
+  <p class="version">Stand 07.10.2026, 13:40</p>
+</aside>
+
+<div id="dock">
+  <p id="hint"></p>
+  <div id="colors" class="bar" role="group" aria-label="Farbe der Bubble" hidden></div>
+  <div id="tools" class="bar" role="toolbar" aria-label="Werkzeuge">
+    <button type="button" id="btn-new">Neue Bubble</button>
+    <button type="button" id="btn-child" disabled>Unterbubble</button>
+    <button type="button" id="btn-group" disabled title="Alle Bubbles wählen, die an der gewählten angedockt sind, um sie zusammen zu verschieben">Gruppe</button>
+    <button type="button" id="btn-link" disabled title="Zwei mit Shift-Klick gewählte Bubbles verbinden, auch wenn sie in verschiedenen Bubbles liegen">Verbinden</button>
+    <button type="button" id="btn-del" disabled>Löschen</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button type="button" id="btn-undo" disabled>Rückgängig</button>
+    <button type="button" id="btn-redo" disabled>Wiederholen</button>
+    <button type="button" id="btn-fit">Übersicht</button>
+    <button type="button" id="btn-export">Export</button>
+    <button type="button" id="btn-import">Import</button>
+    <input type="file" id="import-file" accept="application/json,.json" hidden />
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const NS = "http://www.w3.org/2000/svg";
+  const STORE = "notizen-bubbles-v1";
+  const TUNE_STORE = "notizen-tune-v1";
+
+  const $ = (id) => document.getElementById(id);
+  const svg = $("canvas");
+  const world = $("world");
+  const defs = $("defs");
+  const fillsG = $("fills");
+  const linesG = $("lines");
+  const overlay = $("overlay");
+  const labelsEl = $("labels");
+  const measurer = $("measure");
+  const hintEl = $("hint");
+  const crumbEl = $("crumb");
+  const colorsEl = $("colors");
+  const btn = {
+    new: $("btn-new"),
+    child: $("btn-child"),
+    del: $("btn-del"),
+    group: $("btn-group"),
+    link: $("btn-link"),
+    undo: $("btn-undo"),
+    redo: $("btn-redo"),
+    fit: $("btn-fit"),
+    export: $("btn-export"),
+    import: $("btn-import"),
+  };
+  const importFile = $("import-file");
+
+  // --- Settings (hamburger menu) ------------------------------------------------
+  // Base values chosen by Matthias (07.10.2026)
+  // What the menu offers; everything else follows from these (see derive)
+  const DEFAULTS = {
+    palette: "pastell", // pastell | kueste | mono
+    ink: "", // text colour, empty = automatic
+    family: "sans", // sans | serif | mono
+    weight: "kraeftig", // normal | kraeftig
+    font: 1, // text size
+    grow: 1, // how much bigger the text of bubbles with much inside gets
+    round: true, // round bubbles, or bubbles that take the shape of what lies inside
+    roundness: 0.35, // without round bubbles: 0 = hugs its content, 1 = nearly round again
+    merge: 0.42, // how readily bubbles melt together
+    flow: 0.4, // how far colours and grey tones run into each other
+    saturation: 1, // how strong the colours are
+    opacity: 1, // how solid the fill is
+    lineOn: true, // contour on or off
+    line: 4, // contour width
+    lineColor: "", // contour colour, empty = automatic
+    shade: 0, // 3D: light and shadow (0 = flat)
+    scale: 1, // size of empty bubbles
+    inner: 1, // room between a bubble's contour and what lies inside
+    spacing: 1, // distance between bubbles
+    pull: 1, // how strongly bubbles are drawn into the middle of the bubble they sit in
+    push: 1, // how firmly bubbles push each other away
+    glide: 0.34, // how far a bubble glides when let go
+    linkW: 0.45, // width of connections between bubbles
+    linkPull: 1, // how strongly connected bubbles lean towards each other
+    dots: true, // dotted background
+  };
+  // Values chosen by Matthias (07.10.2026) that stay fixed
+  const FIXED = { sharp: 60, textPad: 1 };
+  function derive(t) {
+    Object.assign(t, FIXED);
+    t.attract = 0.006 * t.pull;
+    t.repel = 0.13 * t.push;
+    t.gap = 2.1 * t.spacing;
+    t.pad = 3 * t.inner;
+    t.size = 1.05 * t.scale;
+    t.goo = 8 + 22 * t.merge;
+    t.blend = 0.5 + 90 * t.flow * t.flow;
+    t.outlineColor = t.lineColor;
+    t.threshold = 0.62 - 0.12 * t.merge;
+    t.outline = t.lineOn && t.line > 0;
+    t.outlineW = t.line;
+    t.friction = 0.55 + 0.35 * t.glide;
+    t.throw = 0.2 + 0.8 * t.glide;
+    return t;
+  }
+  const SPEC = [
+    ["Farben"],
+    ["palette", "Farbset", [["pastell", "Pastell"], ["kueste", "Küste"], ["mono", "Mono"]]],
+    ["flow", "Reichweite des Farbverlaufs", 0, 1, 0.01],
+    ["saturation", "Farbstärke", 0, 2, 0.05],
+    ["opacity", "Deckkraft der Füllung", 0.2, 1, 0.01],
+    ["ink", "Schriftfarbe"],
+    ["Schrift"],
+    ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
+    ["weight", "Stärke", [["normal", "Normal"], ["kraeftig", "Kräftig"]]],
+    ["font", "Schriftgröße", 0.7, 1.8, 0.05],
+    ["grow", "Größer, je mehr darin liegt", 0, 2, 0.05],
+    ["Form"],
+    ["round", "Runde Bubbles"],
+    ["roundness", "Rundung der freien Form", 0, 1, 0.01],
+    ["merge", "Verschmelzen", 0, 1, 0.01],
+    ["lineOn", "Kontur"],
+    ["line", "Konturstärke", 0.3, 10, 0.1],
+    ["lineColor", "Konturfarbe"],
+    ["shade", "Plastisch (3D)", 0, 1, 0.05],
+    ["scale", "Größe leerer Bubbles", 0.6, 1.8, 0.05],
+    ["inner", "Rand innen", 0.3, 2.5, 0.05],
+    ["Bewegung"],
+    ["spacing", "Abstand zwischen Bubbles", 0.3, 3, 0.05],
+    ["pull", "Anziehung zur Mitte", 0.2, 4, 0.05],
+    ["push", "Abstoßung", 0.2, 3, 0.05],
+    ["glide", "Gleiten nach dem Loslassen", 0, 1, 0.01],
+    ["Verbindungen"],
+    ["linkW", "Breite", 0.15, 1, 0.01],
+    ["linkPull", "Zug zueinander", 0, 4, 0.05],
+    ["Hintergrund"],
+    ["dots", "Punkte"],
+  ];
+  const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
+  // Saved settings, numbered by position: { list: [{ id, values }], def: id | null }
+  const PRESET_STORE = "notizen-presets-v1";
+  let presets = { list: [], def: null };
+  try {
+    const p = JSON.parse(localStorage.getItem(PRESET_STORE) || "null");
+    if (p && Array.isArray(p.list)) {
+      // Earlier entries were named 01, 02, …; they keep that as their id
+      const list = p.list.filter((x) => x && x.values).map((x) => ({ id: x.id || "c" + x.name, values: x.values }));
+      const ids = new Set(list.map((x) => x.id));
+      const def = p.def && !ids.has(p.def) && ids.has("c" + p.def) ? "c" + p.def : p.def;
+      presets = { list, def: ids.has(def) ? def : null };
+    }
+  } catch (e) {
+    /* none saved */
+  }
+  const INK_OLD = { graphit: "", tinte: "#1f3a5f", sepia: "#5b3d28" };
+  const clean = (v) => {
+    const out = {};
+    for (const k in DEFAULTS) out[k] = v && k in v && typeof v[k] === typeof DEFAULTS[k] ? v[k] : DEFAULTS[k];
+    if (out.ink in INK_OLD) out.ink = INK_OLD[out.ink];
+    if (out.ink && !/^#[0-9a-f]{6}$/i.test(out.ink)) out.ink = "";
+    if (out.lineColor && !/^#[0-9a-f]{6}$/i.test(out.lineColor)) out.lineColor = "";
+    return derive(out);
+  };
+  // The base: the saved settings marked "Standard", else the built-in values
+  const base = () => clean(presets.list.find((x) => x.id === presets.def)?.values);
+  const T = base();
+  try {
+    const cur = JSON.parse(localStorage.getItem(TUNE_STORE) || "null");
+    if (cur) Object.assign(T, clean(cur));
+  } catch (e) {
+    /* base */
+  }
+
+  // Per nesting depth (0 = main bubble)
+  const SIG_K = [1, 0.67, 0.55, 0.45]; // goo of the hairline, × T.goo
+  const MIN_R = [64, 36, 28, 24];
+  const PAD = [18, 12, 10, 9];
+  const dd = (d) => Math.min(d, 3);
+  const sig = (d) => T.goo * SIG_K[dd(d)];
+
+  // Bubble colour sets; switching set recolours bubbles slot by slot
+  const PALETTES = {
+    pastell: ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"],
+    // Mint, sea blue, peach and sand (after the "Serene Coastline" and "Sunset Glow" moods)
+    kueste: ["#d1e8e2", "#a9d6e5", "#9cc5c9", "#6fa8b0", "#ffe8d6", "#ffcf8f", "#d9b39c", "#e9e4d8"],
+    // Warm greys, light to dark
+    mono: ["#f3f2ef", "#e7e5e0", "#dad7d1", "#cdc9c2", "#bfbab2", "#aea9a0", "#98938a", "#7d786f"],
+  };
+  // Earlier sets, so saved colours and settings move over slot by slot
+  const LEGACY = {
+    kraeftig: { to: "kueste", colors: ["#e8794f", "#e9b740", "#6fb37b", "#4f8fcf", "#9b7fd0", "#d9658a", "#a08d74", "#3fa3a0"] },
+    erdig: { to: "pastell", colors: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"] },
+    rose: { to: "pastell", colors: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"] },
+  };
+  if (LEGACY[T.palette]) T.palette = LEGACY[T.palette].to;
+  const palette = () => PALETTES[T.palette] || PALETTES.pastell;
+  let themeDark = false;
+
+  const IDLE_HINT =
+    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · berühren dockt an · in eine Bubble ziehen legt hinein, herausziehen holt heraus<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · zwei gewählt + Verbinden: über Grenzen hinweg verbinden · Entf: löschen</span>';
+
+  let bubbles = new Map();
+  let view = { x: 0, y: 0, k: 1 };
+  let selected = null; // the bubble the tools act on first
+  let sel = new Set(); // every selected bubble (Shift-click adds and removes)
+  let editing = null;
+  let drag = null;
+  let pan = null;
+  let pinch = null;
+  const pointers = new Map();
+  const undoStack = [];
+  const redoStack = [];
+  let dirty = true;
+  let needsSave = false;
+  let flashTimer = 0;
+  let seq = 0;
+
+  // --- Structure ------------------------------------------------------------
+  let kids = new Map();
+  let depthOf = new Map();
+  let nDesc = new Map(); // how many bubbles sit (directly or deeper) inside a bubble
+
+  // a is an ancestor of b
+  function isAncestor(a, b) {
+    const stack = [...b.parents];
+    const seen = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === a.id) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const p = bubbles.get(id);
+      if (p) stack.push(...p.parents);
+    }
+    return false;
+  }
+
+  // A bubble that belongs to X and to something inside X only needs the inner one
+  function normalize() {
+    for (const b of bubbles.values()) {
+      if (b.parents.length < 2) continue;
+      b.parents = b.parents.filter((pid) => {
+        const p = bubbles.get(pid);
+        return !b.parents.some((qid) => qid !== pid && bubbles.has(qid) && isAncestor(p, bubbles.get(qid)));
+      });
+    }
+  }
+
+  function topo() {
+    normalize();
+    kids = new Map();
+    depthOf = new Map();
+    for (const b of bubbles.values()) kids.set(b.id, []);
+    for (const b of bubbles.values()) for (const p of b.parents) kids.get(p)?.push(b);
+    const dep = (b, guard) => {
+      if (depthOf.has(b.id)) return depthOf.get(b.id);
+      let d = 0;
+      for (const p of b.parents) {
+        const pb = bubbles.get(p);
+        if (pb && guard < 64) d = Math.max(d, dep(pb, guard + 1) + 1);
+      }
+      depthOf.set(b.id, d);
+      return d;
+    };
+    for (const b of bubbles.values()) dep(b, 0);
+    nDesc = new Map();
+    for (const b of bubbles.values()) nDesc.set(b.id, subtree(b).size - 1);
+    orderDirty = true;
+  }
+
+  function subtree(b) {
+    const out = new Set([b]);
+    const stack = [b];
+    while (stack.length) {
+      const x = stack.pop();
+      for (const c of kids.get(x.id) || []) {
+        if (!out.has(c)) {
+          out.add(c);
+          stack.push(c);
+        }
+      }
+    }
+    return out;
+  }
+
+  // A bubble and everything that belongs only to it
+  function ownTree(b, out = new Set()) {
+    if (out.has(b)) return out;
+    out.add(b);
+    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) ownTree(c, out);
+    return out;
+  }
+
+  // The outermost bubble that carries b around (b itself for main and shared bubbles)
+  function anchor(b) {
+    let a = b;
+    const seen = new Set();
+    while (a.parents.length === 1 && !seen.has(a)) {
+      seen.add(a);
+      const p = bubbles.get(a.parents[0]);
+      if (!p) break;
+      a = p;
+    }
+    return a;
+  }
+
+  function moveTree(b, dx, dy, seen = new Set()) {
+    if (seen.has(b)) return;
+    seen.add(b);
+    b.x += dx;
+    b.y += dy;
+    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) moveTree(c, dx, dy, seen);
+  }
+
+  function uid() {
+    return "b" + Date.now().toString(36) + (seq++).toString(36);
+  }
+
+  // The circles a bubble is drawn from: one, or (free form) one halo per child plus the label
+  const circlesOf = (b) => (b._shape && b._shape.length ? b._shape : [[b.x, b.y, b.r]]);
+  // The two circles of a and b that come closest: [gap, circle of a, circle of b]
+  function nearest(a, b) {
+    let best = [Infinity, null, null];
+    for (const p of circlesOf(a))
+      for (const q of circlesOf(b)) {
+        const g = Math.hypot(q[0] - p[0], q[1] - p[1]) - p[2] - q[2];
+        if (g < best[0]) best = [g, p, q];
+      }
+    return best;
+  }
+  function insideShape(b, pt) {
+    return circlesOf(b).some(([x, y, r]) => Math.hypot(pt.x - x, pt.y - y) <= r);
+  }
+  // Docking: bubbles on the same level that were pushed together stay merged.
+  // k = wanted distance as a share of the two radii (below 1 = overlapping)
+  const sameLevel = (a, b) => (a.parents[0] || null) === (b.parents[0] || null);
+  function dockPair(a, b, k) {
+    a.docks[b.id] = k;
+    b.docks[a.id] = k;
+  }
+  function undockAll(b) {
+    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
+    b.docks = {};
+  }
+  // The touching neighbours a bubble would dock to if let go here
+  function dockTargets(b, skip, pid = b.parents[0] || null) {
+    const out = [];
+    for (const o of bubbles.values()) {
+      if (o === b || (skip && skip.has(o)) || (o.parents[0] || null) !== pid) continue;
+      const [gap, p, q] = nearest(b, o);
+      if (gap < Math.max(6, sig(depthOf.get(b.id) || 0) * 0.5)) {
+        const dist = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        out.push({ o, k: Math.max(0.7, Math.min(1, dist / (p[2] + q[2]))) });
+      }
+    }
+    return out;
+  }
+  // Everything docked to b, directly or through others
+  function dockGroup(b) {
+    const out = new Set([b]);
+    const stack = [b];
+    while (stack.length) {
+      const x = stack.pop();
+      for (const id in x.docks) {
+        const o = bubbles.get(id);
+        if (o && !out.has(o)) {
+          out.add(o);
+          stack.push(o);
+        }
+      }
+    }
+    return out;
+  }
+  function make(text, x, y, parents = [], color = null) {
+    const b = { id: uid(), text, x, y, parents: [...parents], color, docks: {}, links: {}, r: 0, vx: 0, vy: 0 };
+    bubbles.set(b.id, b);
+    topo();
+    b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
+    return b;
+  }
+
+  function remove(b) {
+    for (const c of kids.get(b.id) || []) {
+      c.parents = c.parents.filter((p) => p !== b.id);
+      if (!c.parents.length) c.parents = [...b.parents];
+    }
+    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
+    for (const id in b.links) delete bubbles.get(id)?.links[b.id];
+    bubbles.delete(b.id);
+    sel.delete(b);
+    if (selected === b) selected = [...sel].pop() || null;
+    if (editing === b) editing = null;
+    topo();
+    needsSave = true;
+    dirty = true;
+  }
+
+  function name(b) {
+    const t = (b.text || "").split("\n")[0].trim();
+    if (!t) return "Notiz";
+    return t.length > 26 ? t.slice(0, 25) + "…" : t;
+  }
+
+  // --- Text measuring ---------------------------------------------------------
+  const mcache = new Map();
+  // Type grows with what a bubble holds: a leaf reads small, a bubble with
+  // many notes inside reads like a headline.
+  function typeOf(b) {
+    const n = nDesc.get(b.id) || 0;
+    const d = depthOf.get(b.id) || 0;
+    const px = Math.min(46, (15 + (d === 0 ? 2 : 0)) * T.font * (1 + T.grow * 0.28 * Math.log2(1 + n)));
+    const strong = T.weight === "kraeftig";
+    let wt = n ? (strong ? 700 : 600) : strong ? 500 : 400;
+    if (T.family === "mono") wt = Math.min(wt, 500);
+    return { px: Math.round(px * 2) / 2, wt };
+  }
+  // Air between text and contour
+  const marginOf = (px) => (0.6 * px + 8 + (T.outline ? T.outlineW * 0.6 : 0)) * T.textPad;
+  const range = document.createRange();
+  function measure(text, ty, w) {
+    const key = ty.px + "|" + ty.wt + "|" + w + "|" + text;
+    let m = mcache.get(key);
+    if (m === undefined) {
+      measurer.style.fontSize = ty.px + "px";
+      measurer.style.fontWeight = ty.wt;
+      measurer.style.width = w + "px";
+      measurer.textContent = text || "Notiz";
+      // Widest line actually used, so short lines do not reserve room
+      range.selectNodeContents(measurer);
+      let tw = 0;
+      for (const r of range.getClientRects()) tw = Math.max(tw, r.width);
+      m = { h: measurer.offsetHeight, tw: Math.min(w, Math.ceil(tw)), fits: measurer.scrollWidth <= w + 1 };
+      mcache.set(key, m);
+    }
+    return m;
+  }
+  // Smallest circle that holds the text of a bubble without children, with air all round
+  function leafSize(text, ty, minR) {
+    const mg = marginOf(ty.px);
+    const key = "L" + ty.px + "|" + ty.wt + "|" + mg + "|" + minR + "|" + text;
+    let s = mcache.get(key);
+    if (!s) {
+      let best = null;
+      for (let r = Math.round(minR); r < 700 && !best; r += 3) {
+        for (const f of [1.6, 1.4, 1.25, 1.1]) {
+          const w = Math.round((r - mg) * f);
+          if (w < ty.px * 2) continue;
+          const m = measure(text, ty, w);
+          if (m.fits && Math.hypot(m.tw / 2, m.h / 2) <= r - mg) {
+            best = { r, w: w + 2, h: m.h };
+            break;
+          }
+        }
+      }
+      s = best || { r: 700, w: 600, h: measure(text, ty, 600).h };
+      mcache.set(key, s);
+    }
+    return s;
+  }
+  function parentLabel(text, ty) {
+    const w = Math.round(ty.px * 10);
+    const m = measure(text, ty, w);
+    return { w, h: m.h, tw: m.tw, mg: marginOf(ty.px) };
+  }
+  // Distance from the top of the circle to the top of the label, so the
+  // widest line clears the contour by the margin
+  function labelTop(r, L) {
+    const half = L.tw / 2 + L.mg;
+    return Math.max(L.mg * 0.8, r - Math.sqrt(Math.max(0, r * r - half * half)) + L.mg * 0.35);
+  }
+
+  // --- Physics ------------------------------------------------------------------
+  // Forces change speed; friction lets everything come to a real stop.
+  // Every force acts on a pair (or pulls a child inside its own bubble),
+  // so nothing can push the whole picture across the screen.
+  function step() {
+    const moving = drag && drag.moved ? new Set(drag.group) : null;
+    const pinned = moving ? new Set() : null;
+    if (moving) for (const g of moving) ownTree(g, pinned);
+    const isPinned = (b) => pinned !== null && pinned.has(b);
+    const all = [...bubbles.values()];
+    for (const b of all) {
+      b._fx = 0;
+      b._fy = 0;
+    }
+    const force = (b, fx, fy) => {
+      if (!isFinite(fx) || !isFinite(fy)) return;
+      b._fx += fx;
+      b._fy += fy;
+    };
+
+    for (const b of all) {
+      const d = depthOf.get(b.id);
+      b._own = (kids.get(b.id) || []).filter((c) => c.parents.length === 1 && !(moving && moving.has(c)));
+      b._type = typeOf(b);
+      if (b._own.length) {
+        b._label = parentLabel(b.text, b._type);
+        b._lt = labelTop(b.r, b._label);
+        b._off = (b._lt + b._label.h + b._label.mg * 0.6 - PAD[dd(d)] * T.pad) / 2;
+      } else {
+        b._label = leafSize(b.text, b._type, MIN_R[dd(d)] * T.size);
+      }
+      b._linked = null;
+    }
+
+    // Docked bubbles: a spring holds each pair at the distance they were docked at
+    for (const a of all) {
+      for (const id in a.docks) {
+        if (id < a.id) continue;
+        const c = bubbles.get(id);
+        if (!c) continue;
+        (a._linked ||= new Set()).add(c);
+        (c._linked ||= new Set()).add(a);
+        if (isPinned(a) || isPinned(c)) continue;
+        const [, p, q] = nearest(a, c);
+        const dx = q[0] - p[0];
+        const dy = q[1] - p[1];
+        const dist = Math.hypot(dx, dy) || 1;
+        const want = a.docks[id] * (p[2] + q[2]);
+        const f = Math.max(-6, Math.min(6, (dist - want) * 0.06));
+        force(a, (dx / dist) * f, (dy / dist) * f);
+        force(c, (-dx / dist) * f, (-dy / dist) * f);
+      }
+    }
+
+    // Connected bubbles lean towards each other, gently, across their bubbles' walls
+    for (const a of all) {
+      for (const id in a.links) {
+        if (id < a.id) continue;
+        const c = bubbles.get(id);
+        if (!c || isPinned(a) || isPinned(c)) continue;
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const f = Math.min(2, Math.max(0, dist - a.r - c.r) * 0.0015 * T.linkPull);
+        force(a, (dx / dist) * f, (dy / dist) * f);
+        force(c, (-dx / dist) * f, (-dy / dist) * f);
+      }
+    }
+
+    const repel = (list, gap) => {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i];
+          const c = list[j];
+          if (isPinned(a) || isPinned(c)) continue;
+          if (a._linked && a._linked.has(c)) continue;
+          let dx = c.x - a.x;
+          let dy = c.y - a.y;
+          let dist = Math.hypot(dx, dy);
+          const min = a.r + c.r + gap;
+          if (dist >= min) continue;
+          if (dist < 0.01) {
+            dx = 1;
+            dy = 0.5;
+            dist = Math.hypot(dx, dy);
+          }
+          const f = Math.min(8, (min - dist) * T.repel) / dist;
+          force(a, -dx * f, -dy * f);
+          force(c, dx * f, dy * f);
+        }
+      }
+    };
+
+    for (const b of all) {
+      b._shape = null;
+      if (!b._own.length) continue;
+      const d = depthOf.get(b.id);
+      if (!T.round) {
+        // Free form: the bubble is the skin around its children, the label sits on top
+        const gap = sig(d + 1) * 3 * T.gap;
+        for (const c of b._own) force(c, (b.x - c.x) * T.attract * 0.35, (b.y - c.y) * T.attract * 0.35);
+        repel(b._own, gap);
+        const pad = PAD[dd(d)] * T.pad + gap / 2;
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const shape = [];
+        for (const c of b._own) {
+          const r = c.r + pad;
+          shape.push([c.x, c.y, r]);
+          x0 = Math.min(x0, c.x - r);
+          x1 = Math.max(x1, c.x + r);
+          y0 = Math.min(y0, c.y - r);
+          y1 = Math.max(y1, c.y + r);
+        }
+        // Label row: a few circles over the top of the children
+        const L = b._label;
+        const cx = (x0 + x1) / 2;
+        const rl = L.h / 2 + L.mg;
+        const ly = y0 + pad * 0.6 - L.h / 2;
+        const half = Math.max(0, L.tw / 2);
+        const n = Math.max(1, Math.ceil((2 * half) / rl));
+        for (let i = 0; i <= n; i++) shape.push([cx - half + (2 * half * i) / n, ly, rl]);
+        // A spine from the label down into the middle, so the skin stays one piece
+        const my = (y0 + y1) / 2;
+        // Rundung: a round core under the content, from nothing up to almost the whole shape
+        if (T.roundness > 0.01) {
+          const reach = Math.max(x1 - cx, y1 - my, cx - x0, my - (ly - rl));
+          shape.push([cx, (my + ly) / 2 + (my - ly) * 0.25, reach * T.roundness]);
+        }
+        for (let y = ly + rl; y < my; y += rl) shape.push([cx, y, rl * 0.8]);
+        b._shape = shape;
+        b._labTop = ly - L.h / 2;
+        // The bubble's own point follows the centroid of its children, so their pull
+        // towards it cancels out and the group does not creep
+        if (!isPinned(b)) {
+          let sx = 0, sy = 0;
+          for (const c of b._own) {
+            sx += c.x;
+            sy += c.y;
+          }
+          b.x += (sx / b._own.length - b.x) * 0.5;
+          b.y += (sy / b._own.length - b.y) * 0.5;
+        }
+        continue;
+      }
+      const tx = b.x;
+      const ty = b.y + b._off;
+      for (const c of b._own) force(c, (tx - c.x) * T.attract, (ty - c.y) * T.attract);
+      repel(b._own, sig(d + 1) * 3 * T.gap);
+      // Keep children off the label
+      const L = b._label;
+      const x0 = b.x - L.tw / 2 - L.mg * 0.5;
+      const x1 = b.x + L.tw / 2 + L.mg * 0.5;
+      const y0 = b.y - b.r + b._lt - L.mg * 0.5;
+      const y1 = b.y - b.r + b._lt + L.h + L.mg * 0.5;
+      for (const c of b._own) {
+        const qx = Math.max(x0, Math.min(x1, c.x));
+        const qy = Math.max(y0, Math.min(y1, c.y));
+        let dx = c.x - qx;
+        let dy = c.y - qy;
+        let dist = Math.hypot(dx, dy);
+        const need = c.r + 4;
+        if (dist >= need) continue;
+        if (dist < 0.01) {
+          dx = 0;
+          dy = 1;
+          dist = 1;
+        }
+        const f = Math.min(10, (need - dist) * 0.35) / dist;
+        force(c, dx * f, dy * f);
+      }
+    }
+    repel(all.filter((b) => !b.parents.length), sig(0) * 2.6 * T.gap);
+
+    // Integrate: speed with friction, then a firm stop when it gets tiny
+    let energy = 0;
+    for (const b of all) {
+      if (isPinned(b)) {
+        b.vx = 0;
+        b.vy = 0;
+        continue;
+      }
+      b.vx = (b.vx + b._fx) * T.friction;
+      b.vy = (b.vy + b._fy) * T.friction;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > 40) {
+        b.vx *= 40 / sp;
+        b.vy *= 40 / sp;
+      }
+      if (sp < 0.03 && Math.hypot(b._fx, b._fy) < 0.03) {
+        b.vx = 0;
+        b.vy = 0;
+      }
+    }
+    for (const b of all) {
+      if (b.vx || b.vy) {
+        moveTree(b, b.vx, b.vy);
+        energy += Math.abs(b.vx) + Math.abs(b.vy);
+      }
+    }
+
+    // Radii, innermost first: a bubble wraps its own children and its label
+    const order = all.slice().sort((a, b) => depthOf.get(b.id) - depthOf.get(a.id));
+    for (const b of order) {
+      const d = dd(depthOf.get(b.id));
+      let target;
+      if (b._shape) {
+        target = 0;
+        for (const [x, y, r] of b._shape) target = Math.max(target, Math.hypot(x - b.x, y - b.y) + r);
+        b.r = target;
+        continue;
+      } else if (b._own.length) {
+        const L = b._label;
+        const half = L.tw / 2 + L.mg;
+        target = Math.max(MIN_R[d] * T.size * 1.2, half * 1.22, (L.h + 2 * L.mg) * 1.25);
+        for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d] * T.pad);
+      } else {
+        target = b._label.r;
+      }
+      const dr = (target - b.r) * 0.25;
+      if (Math.abs(dr) > 0.01) {
+        b.r += dr;
+        energy += Math.abs(dr);
+      } else {
+        b.r = target;
+      }
+    }
+    return energy;
+  }
+
+  // --- Rendering ---------------------------------------------------------------
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function cssColor(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  // Fill: colours blur into each other (nested and shared bubbles flow
+  // into one another), cut out by the melted shape of everything.
+  // Lines: one hairline per depth along its melted contour (website grid recipe).
+  function buildFilters() {
+    defs.textContent = "";
+    const th = T.threshold;
+    const S = T.sharp;
+    const alpha = (k, t) => `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${k} ${(-(k * t - 0.5)).toFixed(3)}`;
+    const base = cssColor("--d0", "#ffffff");
+
+    const f = el("filter", { id: "fill", x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
+    // Colours run into each other: blur them, then make the blur opaque again so a
+    // neighbour's colour reaches across instead of fading to white
+    el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: Math.max(0.01, T.blend), result: "cb0" }, f);
+    el("feColorMatrix", { in: "cb0", type: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 60 0", result: "cb1" }, f);
+    el("feColorMatrix", { in: "cb1", type: "saturate", values: T.saturation.toFixed(2), result: "cb" }, f);
+    el("feFlood", { "flood-color": base, result: "base" }, f);
+    el("feComposite", { in: "cb", in2: "base", operator: "over", result: "col0" }, f);
+    const ct = el("feComponentTransfer", { in: "col0", result: "col" }, f);
+    el("feFuncA", { type: "linear", slope: T.opacity.toFixed(2) }, ct);
+    el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: sig(0), result: "ab" }, f);
+    el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, f);
+    el("feComposite", { in: "col", in2: "shape", operator: "in", result: "body" }, f);
+    // 3D: a soft shadow under everything
+    if (T.shade > 0) el("feDropShadow", { in: "body", dx: 0, dy: 6 * T.shade + 2, stdDeviation: 6 + 8 * T.shade, "flood-color": "#000", "flood-opacity": (0.1 + 0.16 * T.shade).toFixed(3) }, f);
+
+    const line = T.outlineColor || cssColor("--outline", "#595959");
+    for (let d = 0; d < 4; d++) {
+      const s = sig(d);
+      const g = el("filter", { id: "line" + d, x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
+      el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: s, result: "ab" }, g);
+      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, g);
+      const edge = th + 0.5 / S + T.outlineW / (s * 2.5066);
+      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(40, edge), result: "inner" }, g);
+      el("feFlood", { "flood-color": line, result: "ink" }, g);
+      el("feComposite", { in: "ink", in2: "shape", operator: "in", result: "tint" }, g);
+      el("feComposite", { in: "tint", in2: "inner", operator: "out", result: "ring" }, g);
+      const layers = [];
+      if (T.shade > 0) {
+        // 3D: the blurred edge works as a height map; light from top left
+        const k = T.shade;
+        const scale = (2 + 4 * k).toFixed(2);
+        const lo = el("feDiffuseLighting", { in: "ab", surfaceScale: scale, diffuseConstant: 1, "lighting-color": "#ffffff", result: "diff" }, g);
+        el("feDistantLight", { azimuth: 225, elevation: 48 }, lo);
+        // Dark where the surface turns away from the light
+        el("feColorMatrix", { in: "diff", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ${(-0.55 * k).toFixed(3)} 0 0 0 ${(0.55 * k * 0.92).toFixed(3)}`, result: "dark" }, g);
+        el("feComposite", { in: "dark", in2: "shape", operator: "in", result: "shadow" }, g);
+        const hi = el("feSpecularLighting", { in: "ab", surfaceScale: scale, specularConstant: (0.7 * k).toFixed(3), specularExponent: 16, "lighting-color": "#ffffff", result: "spec" }, g);
+        el("feDistantLight", { azimuth: 225, elevation: 40 }, hi);
+        el("feComposite", { in: "spec", in2: "shape", operator: "in", result: "light" }, g);
+        layers.push("shadow", "light");
+      }
+      if (T.outline) layers.push("ring");
+      if (layers.length) {
+        const mg = el("feMerge", {}, g);
+        for (const r of layers) el("feMergeNode", { in: r }, mg);
+      } else el("feFlood", { "flood-opacity": 0 }, g);
+    }
+    svg.classList.toggle("has-dots", !!T.dots);
+    document.documentElement.style.setProperty("--fs", T.font);
+    themeDark = luminance(toHex(cssColor("--bg", "#ffffff"))) < 0.5;
+    // One chosen colour for text on light grounds, a pale tint of it on dark ones
+    const mix = (hex, to, k) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(hex.substr(i, 2), 16) * (1 - k) + to * k).toString(16).padStart(2, "0")).join("");
+    document.documentElement.style.setProperty("--ink-l", T.ink || "rgba(44, 40, 36, 0.86)");
+    document.documentElement.style.setProperty("--ink-d", T.ink ? mix(T.ink, 255, 0.82) : "rgba(250, 247, 242, 0.92)");
+    document.documentElement.style.setProperty("--label-font", FAMILIES[T.family] || FAMILIES.sans);
+    dirty = true;
+  }
+
+  // Fill layer: one group per depth (bridges under the bubbles of that depth)
+  // Line layer: one filtered group per depth
+  const fillLayers = [];
+  const lineLayers = [];
+  function fillLayer(d) {
+    while (fillLayers.length <= d) {
+      const g = el("g", {}, fillsG);
+      fillLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
+    }
+    return fillLayers[d];
+  }
+  function lineLayer(d) {
+    while (lineLayers.length <= d) {
+      const i = lineLayers.length;
+      const g = el("g", { filter: `url(#line${dd(i)})` }, linesG);
+      lineLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
+    }
+    return lineLayers[d];
+  }
+  fillsG.setAttribute("filter", "url(#fill)");
+
+  const fillEls = new Map();
+  const lineEls = new Map();
+  const labels = new Map();
+  let orderDirty = true;
+  const selRings = [];
+  const dropRing = el("circle", { fill: "var(--ink)", "fill-opacity": "0.04", stroke: "var(--ink)", "stroke-dasharray": "4 5" }, overlay);
+
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  }
+  // Uncoloured bubbles take the colour of the bubble they sit in
+  function colorOf(b) {
+    const seen = new Set();
+    for (let x = b; x && !seen.has(x); x = bubbles.get(x.parents[0])) {
+      if (x.color) return x.color;
+      seen.add(x);
+    }
+    return null;
+  }
+  const fillOf = (b) => colorOf(b) || `var(--d${dd(depthOf.get(b.id))})`;
+  // Blend two fills; theme colours (CSS variables) switch over halfway
+  function mixFill(a, b, u) {
+    if (!HEX.test(a) || !HEX.test(b)) return u < 0.5 ? a : b;
+    return "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.substr(i, 2), 16) * (1 - u) + parseInt(b.substr(i, 2), 16) * u).toString(16).padStart(2, "0")).join("");
+  }
+
+  function render() {
+    world.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.k.toFixed(4)})`);
+    labelsEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+    const gs = 24 * view.k;
+    svg.style.backgroundSize = `${gs}px ${gs}px`;
+    svg.style.backgroundPosition = `${view.x}px ${view.y}px`;
+
+    for (const L of fillLayers) L.bridges.textContent = "";
+    for (const L of lineLayers) L.bridges.textContent = "";
+    for (const m of [fillEls, lineEls, labels]) {
+      for (const [id, n] of m) if (!bubbles.has(id)) { n.remove(); m.delete(id); }
+    }
+
+    for (const b of bubbles.values()) {
+      const d = depthOf.get(b.id);
+      let fc = fillEls.get(b.id);
+      let lc = lineEls.get(b.id);
+      if (!fc) {
+        fc = el("circle", {});
+        lc = el("circle", {});
+        fillEls.set(b.id, fc);
+        lineEls.set(b.id, lc);
+      }
+      if (orderDirty || fc.parentNode !== fillLayer(d).bodies) fillLayer(d).bodies.appendChild(fc);
+      if (orderDirty || lc.parentNode !== lineLayer(d).bodies) lineLayer(d).bodies.appendChild(lc);
+      const cx = b.x.toFixed(1);
+      const cy = b.y.toFixed(1);
+      const r = b._shape ? "0" : Math.max(1, b.r).toFixed(1);
+      for (const c of [fc, lc]) {
+        c.setAttribute("cx", cx);
+        c.setAttribute("cy", cy);
+        c.setAttribute("r", r);
+      }
+      fc.style.fill = fillOf(b);
+      if (b._shape) {
+        const fill = fillOf(b);
+        for (const [x, y, rr] of b._shape) {
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d).bridges);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d).bridges);
+        }
+      }
+
+      // Connections: a tapered neck from this bubble to each connected one, its
+      // colour running from one to the other
+      for (const id in b.links) {
+        const o = bubbles.get(id);
+        if (!o || id < b.id) continue;
+        const d2 = Math.max(d, depthOf.get(id));
+        const ca = fillOf(b);
+        const cb = fillOf(o);
+        const [, pa, pb] = nearest(b, o);
+        const dx = pb[0] - pa[0];
+        const dy = pb[1] - pa[1];
+        const len = Math.hypot(dx, dy);
+        const w = Math.min(pa[2], pb[2]) * T.linkW;
+        const ax = pa[0] + (dx / (len || 1)) * -pa[2] * 0.5;
+        const ay = pa[1] + (dy / (len || 1)) * -pa[2] * 0.5;
+        const full = len + (pa[2] + pb[2]) * 0.5;
+        const stepLen = Math.max(4, w * 0.6);
+        for (let s2 = 0; s2 <= full; s2 += stepLen) {
+          const u = s2 / Math.max(1, full);
+          const rr = w * (0.7 + 0.3 * Math.abs(1 - 2 * u));
+          const x = ax + (dx / (len || 1)) * s2;
+          const y = ay + (dy / (len || 1)) * s2;
+          const fill = mixFill(ca, cb, u);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d2).bridges);
+          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d2).bridges);
+        }
+      }
+
+      let lab = labels.get(b.id);
+      if (!lab) {
+        lab = document.createElement("div");
+        lab.className = "label";
+        lab.spellcheck = false;
+        lab.addEventListener("input", () => onInput(b, lab));
+        lab.addEventListener("keydown", (e) => onLabelKey(e, lab));
+        lab.addEventListener("blur", () => finishEdit(b));
+        lab.addEventListener("paste", onPaste);
+        labelsEl.appendChild(lab);
+        labels.set(b.id, lab);
+      }
+      const isEditing = editing === b;
+      if (!isEditing && lab.textContent !== b.text) lab.textContent = b.text;
+      const col = colorOf(b);
+      const tone = (col ? luminance(col) > 0.5 : !themeDark) ? " on-light" : " on-dark";
+      lab.className = `label d${dd(d)}${tone}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
+      const ty = b._type || typeOf(b);
+      const S = b._label || leafSize(b.text, ty, MIN_R[dd(d)] * T.size);
+      const isParent = b._own && b._own.length;
+      const left = b.x - S.w / 2;
+      const top = b._shape ? b._labTop : isParent ? b.y - b.r + labelTop(b.r, S) : b.y - S.h / 2;
+      lab.style.width = S.w + "px";
+      lab.style.fontSize = ty.px + "px";
+      lab.style.fontWeight = ty.wt;
+      lab.style.zIndex = String(d + 1);
+      lab.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
+    }
+    orderDirty = false;
+
+    const sw = 1.2 / view.k;
+    const ringFor = [...sel].filter((b) => bubbles.has(b.id));
+    while (selRings.length < ringFor.length) selRings.push(el("circle", { fill: "none", stroke: "var(--ink)", "stroke-opacity": "0.55" }, overlay));
+    selRings.forEach((ring, i) => {
+      const b = ringFor[i];
+      if (!b) {
+        ring.style.display = "none";
+        return;
+      }
+      ring.setAttribute("cx", b.x);
+      ring.setAttribute("cy", b.y);
+      ring.setAttribute("r", b.r + 7);
+      ring.setAttribute("stroke-width", sw);
+      ring.setAttribute("stroke-dasharray", b === selected || ringFor.length === 1 ? "" : `${4 / view.k} ${4 / view.k}`);
+      ring.style.display = "";
+    });
+    const t = drag && drag.moved ? drag.target : null;
+    if (t) {
+      dropRing.setAttribute("cx", t.x);
+      dropRing.setAttribute("cy", t.y);
+      dropRing.setAttribute("r", t.r + 10);
+      dropRing.setAttribute("stroke-width", sw);
+      dropRing.style.display = "";
+    } else {
+      dropRing.style.display = "none";
+    }
+  }
+
+  // --- Colours of the selected bubble -----------------------------------------------
+  function buildColors() {
+    colorsEl.textContent = "";
+    const add = (value, label) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "swatch" + (value ? "" : " none");
+      if (value) b.style.setProperty("--sw", value);
+      b.dataset.color = value;
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      colorsEl.appendChild(b);
+    };
+    add("", "Ohne Farbe");
+    palette().forEach((c, i) => add(c, "Farbe " + (i + 1)));
+    const lab = document.createElement("label");
+    lab.title = "Eigene Farbe";
+    lab.textContent = "+";
+    const inp = document.createElement("input");
+    inp.type = "color";
+    inp.id = "custom-color";
+    inp.setAttribute("aria-label", "Eigene Farbe");
+    lab.appendChild(inp);
+    colorsEl.appendChild(lab);
+    inp.addEventListener("input", () => setColor(inp.value, true));
+    inp.addEventListener("change", () => setColor(inp.value, false));
+  }
+  let colorSnap = false;
+  function setColor(value, live) {
+    if (!sel.size) return;
+    if (!colorSnap) {
+      snapshot();
+      colorSnap = true;
+    }
+    if (!live) colorSnap = false;
+    for (const b of sel) b.color = value || null;
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+  colorsEl.addEventListener("pointerdown", (e) => {
+    if (editing) e.preventDefault();
+  });
+  colorsEl.addEventListener("click", (e) => {
+    const s = e.target.closest(".swatch");
+    if (s) {
+      colorSnap = false;
+      setColor(s.dataset.color, false);
+    }
+  });
+
+  function updateChrome() {
+    btn.child.disabled = !selected;
+    btn.del.disabled = !selected;
+    btn.group.disabled = !selected || !Object.keys(selected.docks).length;
+    const pair = linkPair();
+    btn.link.disabled = !pair;
+    btn.link.textContent = pair && pair[1].id in pair[0].links ? "Trennen" : "Verbinden";
+    btn.undo.disabled = !undoStack.length;
+    btn.redo.disabled = !redoStack.length;
+    colorsEl.hidden = !selected;
+    if (selected && bubbles.has(selected.id)) {
+      for (const s of colorsEl.querySelectorAll(".swatch")) s.setAttribute("aria-pressed", String((selected.color || "") === s.dataset.color));
+      const path = [];
+      let b = selected;
+      const seen = new Set();
+      while (b && !seen.has(b)) {
+        seen.add(b);
+        path.unshift(name(b));
+        b = bubbles.get(b.parents[0]);
+      }
+      const extra = selected.parents.length > 1 ? `  (gehört zu ${selected.parents.length} Bubbles)` : "";
+      crumbEl.textContent = sel.size > 1 ? `${sel.size} Bubbles ausgewählt` : path.join(" › ") + extra;
+    } else {
+      crumbEl.textContent = "";
+    }
+    if (!treeEl.hidden) renderTree();
+  }
+
+  function hint(html, live = false) {
+    hintEl.innerHTML = html;
+    hintEl.classList.toggle("is-live", live);
+  }
+  function flash(text) {
+    clearTimeout(flashTimer);
+    hintEl.textContent = text;
+    hintEl.classList.add("is-live");
+    flashTimer = setTimeout(() => hint(IDLE_HINT), 3200);
+  }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // --- Saving, loading, undo ------------------------------------------------------
+  function serialize() {
+    return {
+      v: 1,
+      bubbles: [...bubbles.values()].map((b) => {
+        const o = { id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents };
+        if (b.color) o.color = b.color;
+        if (Object.keys(b.docks).length) o.docks = b.docks;
+        if (Object.keys(b.links).length) o.links = Object.keys(b.links);
+        return o;
+      }),
+    };
+  }
+  function save() {
+    needsSave = false;
+    try {
+      localStorage.setItem(STORE, JSON.stringify(serialize()));
+    } catch (e) {
+      /* storage unavailable: the canvas keeps working */
+    }
+  }
+  function snapshot() {
+    undoStack.push(JSON.stringify(serialize().bubbles));
+    if (undoStack.length > 80) undoStack.shift();
+    redoStack.length = 0;
+    updateChrome();
+  }
+  const HEX = /^#[0-9a-f]{6}$/i;
+  function load(list, keep) {
+    const old = bubbles;
+    bubbles = new Map();
+    for (const o of list || []) {
+      if (!o || o.id == null) continue;
+      const id = String(o.id);
+      bubbles.set(id, {
+        id,
+        text: String(o.text || ""),
+        x: Number(o.x) || 0,
+        y: Number(o.y) || 0,
+        parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
+        color: HEX.test(o.color || "") ? o.color : null,
+        docks: o.docks && typeof o.docks === "object" ? { ...o.docks } : {},
+        links: Array.isArray(o.links) ? Object.fromEntries(o.links.map((x) => [String(x), 1])) : {},
+        r: keep && old.get(id) ? old.get(id).r : 0,
+        vx: 0,
+        vy: 0,
+      });
+    }
+    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => p !== b.id && bubbles.has(p));
+    // Break any cycle a hand-edited file might carry
+    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)));
+    // Earlier a bubble could belong to several; now it lives in one, and the
+    // bubbles it joined stay docked to each other
+    for (const b of bubbles.values()) {
+      if (b.parents.length < 2) continue;
+      const [first, ...rest] = b.parents.map((id) => bubbles.get(id));
+      b.parents = [first.id];
+      for (const o of rest) if (sameLevel(first, o)) dockPair(first, o, 0.85);
+    }
+    for (const b of bubbles.values()) {
+      for (const id in b.docks) {
+        const o = bubbles.get(id);
+        const k = Number(b.docks[id]);
+        if (!o || o === b || !sameLevel(b, o) || !(k > 0.2 && k <= 1.2)) delete b.docks[id];
+        else o.docks[b.id] = k;
+      }
+    }
+    // Connections hold both ways and never tie a bubble to one it lies in
+    for (const b of bubbles.values()) {
+      for (const id in b.links) {
+        const o = bubbles.get(id);
+        if (!o || o === b || isAncestor(b, o) || isAncestor(o, b)) delete b.links[id];
+        else o.links[b.id] = 1;
+      }
+    }
+    sel = new Set([...sel].map((b) => bubbles.get(b.id)).filter(Boolean));
+    selected = (selected && bubbles.get(selected.id)) || [...sel].pop() || null;
+    editing = null;
+    topo();
+    for (const b of bubbles.values()) if (!b.r) b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
+    dirty = true;
+  }
+  function settle(n = 600) {
+    for (let i = 0; i < n; i++) if (step() < 0.01 && i > 30) break;
+  }
+  function travel(from, to) {
+    if (editing) labels.get(editing.id)?.blur();
+    const s = from.pop();
+    if (!s) return;
+    to.push(JSON.stringify(serialize().bubbles));
+    load(JSON.parse(s), true);
+    needsSave = true;
+    updateChrome();
+  }
+  const undo = () => travel(undoStack, redoStack);
+  const redo = () => travel(redoStack, undoStack);
+
+  function sample() {
+    const a = make("Messestand Frankfurt", -260, 0, [], "#f4d8c6");
+    const b = make("Showroom Offenbach", 260, 0, [], "#cfe0ef");
+    make("Empfangstresen", a.x - 40, a.y + 10, [a.id]);
+    make("Lounge mit Sitzinseln", a.x + 40, a.y + 50, [a.id]);
+    const m = make("Materialien", a.x - 10, a.y + 100, [a.id], "#f3e5b1");
+    make("Eiche geölt", m.x - 10, m.y, [m.id], "#ddd6cb");
+    make("Filz", m.x + 10, m.y + 10, [m.id]);
+    make("Schaufenster", b.x - 20, b.y + 30, [b.id]);
+    make("Lichtplanung", b.x + 30, b.y + 70, [b.id], "#e2d6f0");
+    make("Markenfarben", a.x + 60, a.y - 30, [a.id], "#d3e6cf");
+    dockPair(a, b, 0.88);
+  }
+
+  function fit() {
+    const W = innerWidth;
+    const H = innerHeight;
+    const top = 64;
+    const bottom = selected ? 190 : 140;
+    if (!bubbles.size) {
+      view = { x: W / 2, y: top + (H - top - bottom) / 2, k: 1 };
+      dirty = true;
+      return;
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const b of bubbles.values()) {
+      x0 = Math.min(x0, b.x - b.r);
+      y0 = Math.min(y0, b.y - b.r);
+      x1 = Math.max(x1, b.x + b.r);
+      y1 = Math.max(y1, b.y + b.r);
+    }
+    const k = Math.max(0.2, Math.min(1.1, (W - 40) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+    view = { k, x: W / 2 - ((x0 + x1) / 2) * k, y: top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * k };
+    dirty = true;
+  }
+
+  // --- Editing ------------------------------------------------------------------
+  const PLAIN = (() => {
+    const d = document.createElement("div");
+    try {
+      d.contentEditable = "plaintext-only";
+      return d.contentEditable === "plaintext-only";
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  function select(b) {
+    selected = b;
+    sel = new Set(b ? [b] : []);
+    dirty = true;
+    updateChrome();
+  }
+  function toggleSelect(b) {
+    if (sel.has(b)) {
+      sel.delete(b);
+      if (selected === b) selected = [...sel].pop() || null;
+    } else {
+      sel.add(b);
+      selected = b;
+    }
+    dirty = true;
+    updateChrome();
+  }
+  // Selected bubbles without a selected bubble around them
+  function selTops() {
+    const list = [...sel].filter((b) => bubbles.has(b.id));
+    return list.filter((b) => !list.some((o) => o !== b && isAncestor(o, b)));
+  }
+
+  function startEdit(b, isNew = false) {
+    if (editing && editing !== b) labels.get(editing.id)?.blur();
+    select(b);
+    editing = b;
+    b._new = isNew;
+    b._snap = isNew;
+    step();
+    render();
+    const lab = labels.get(b.id);
+    lab.contentEditable = PLAIN ? "plaintext-only" : "true";
+    lab.classList.add("editing");
+    lab.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.selectNodeContents(lab);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    hint("Schreiben · Enter: neuer Absatz · Esc, Strg/Cmd+Enter oder Klick daneben: fertig");
+  }
+
+  function onInput(b, lab) {
+    if (!b._snap) {
+      snapshot();
+      b._snap = true;
+    }
+    b.text = lab.innerText.replace(/\n+$/, "");
+    lab.classList.toggle("is-empty", !b.text);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+
+  function onLabelKey(e, lab) {
+    e.stopPropagation();
+    // Enter starts a new paragraph; Esc or Strg/Cmd+Enter finishes
+    if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
+      e.preventDefault();
+      lab.blur();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      document.execCommand("insertLineBreak");
+    }
+  }
+
+  function onPaste(e) {
+    e.preventDefault();
+    const text = (e.clipboardData && e.clipboardData.getData("text/plain")) || "";
+    document.execCommand("insertText", false, text);
+  }
+
+  function finishEdit(b) {
+    if (editing !== b) return;
+    editing = null;
+    const lab = labels.get(b.id);
+    if (lab) {
+      lab.contentEditable = "false";
+      lab.classList.remove("editing");
+    }
+    b.text = b.text.trim();
+    if (b._new && !b.text && !(kids.get(b.id) || []).length) remove(b);
+    hint(IDLE_HINT);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+
+  // --- Pointer ------------------------------------------------------------------
+  function local(e) {
+    const r = svg.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function toWorld(e) {
+    const p = local(e);
+    return { x: (p.x - view.x) / view.k, y: (p.y - view.y) / view.k };
+  }
+  function hitTest(p, exclude) {
+    let best = null;
+    let bestD = -1;
+    for (const b of bubbles.values()) {
+      if (exclude && exclude.has(b)) continue;
+      if (!insideShape(b, p)) continue;
+      const d = depthOf.get(b.id);
+      if (!best || d > bestD || (d === bestD && b.r < best.r)) {
+        best = b;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  // One gesture for everything: where a bubble is let go decides where it
+  // lives (inside the bubble it mostly sits in, or on the board), and it docks
+  // to whatever it touches there.
+  function modeOf() {
+    return "";
+  }
+  function holds(t, b, current) {
+    if (t.r < b.r * 1.15) return false;
+    const dist = Math.hypot(b.x - t.x, b.y - t.y);
+    // Leaving needs a clear pull outwards; entering needs the bubble mostly inside
+    return current ? dist < t.r + b.r * 0.1 : dist + b.r * 0.4 < t.r * 0.95;
+  }
+  function containerFor(b, skip) {
+    const cur = bubbles.get(b.parents[0]) || null;
+    let best = null;
+    let bestD = -1;
+    for (const t of bubbles.values()) {
+      if (skip.has(t) || !holds(t, b, t === cur)) continue;
+      const d = depthOf.get(t.id);
+      if (d > bestD || (d === bestD && t.r < best.r)) {
+        best = t;
+        bestD = d;
+      }
+    }
+    // Stay in the current bubble while still inside it, unless a deeper one takes it
+    if (cur && !skip.has(cur) && holds(cur, b, true) && (!best || depthOf.get(best.id) <= depthOf.get(cur.id))) best = cur;
+    return best;
+  }
+  function dropPlan(b) {
+    const skip = new Set();
+    for (const g of drag && drag.group ? drag.group : [b]) for (const x of subtree(g)) skip.add(x);
+    const into = containerFor(b, skip);
+    const cur = bubbles.get(b.parents[0]) || null;
+    const moved = into !== cur;
+    const pid = into ? into.id : null;
+    const now = dockTargets(b, new Set(drag && drag.group ? drag.group : []), pid);
+    const left = moved
+      ? Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean)
+      : Object.keys(b.docks)
+          .map((id) => bubbles.get(id))
+          .filter((o) => o && !(drag && drag.group && drag.group.includes(o)) && !now.some((x) => x.o === o));
+    const fresh = now.filter((x) => moved || !(x.o.id in b.docks));
+    return { kind: "dock", into, cur, moved, now, fresh, left };
+  }
+
+  function dragHint() {
+    const b = drag.b;
+    const p = dropPlan(b);
+    drag.target = p.moved ? p.into : null;
+    const list = (xs) => xs.map((x) => "»" + esc(name(x)) + "«").join(" und ");
+    const parts = [];
+    if (p.moved) parts.push(p.into ? `in ${list([p.into])} legen` : "auf das Brett legen");
+    if (p.fresh.length) parts.push(`an ${list(p.fresh.map((x) => x.o))} andocken`);
+    else if (!p.moved && p.left.length) parts.push(`von ${list(p.left)} lösen`);
+    hint(parts.length ? "Loslassen: " + parts.join(" und ") : "Verschieben · berühren dockt an · in eine Bubble ziehen legt hinein", true);
+  }
+
+  // A bubble that took its colour from the bubble it sat in keeps it when it moves
+  function keepColor(b) {
+    if (b.color) return;
+    const c = colorOf(b);
+    if (c) b.color = c;
+  }
+
+  function dropOne(b) {
+    const p = dropPlan(b);
+    if (p.moved) {
+      keepColor(b);
+      undockAll(b);
+      b.parents = p.into ? [p.into.id] : [];
+    } else {
+      for (const o of p.left) {
+        delete b.docks[o.id];
+        delete o.docks[b.id];
+      }
+    }
+    for (const { o, k } of p.now) dockPair(b, o, k);
+    const parts = [];
+    if (p.moved) parts.push(p.into ? `liegt jetzt in »${name(p.into)}«` : "liegt jetzt auf dem Brett");
+    if (p.fresh.length) parts.push(`ist an ${p.fresh.map((x) => "»" + name(x.o) + "«").join(" und ")} angedockt`);
+    else if (!p.moved && p.left.length) parts.push(`ist von ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`);
+    return parts.length ? `»${name(b)}« ${parts.join(" und ")}` : "";
+  }
+
+  function drop() {
+    const msgs = [];
+    for (const g of drag.group) {
+      const m = dropOne(g);
+      if (m) msgs.push(m);
+      // Let it glide on a little with the speed it was thrown at
+      g.vx = drag.vx * T.throw;
+      g.vy = drag.vy * T.throw;
+    }
+    if (msgs.length === 1) flash(msgs[0]);
+    else if (msgs.length > 1) flash(`${msgs.length} Bubbles neu angeordnet`);
+    topo();
+    needsSave = true;
+    dirty = true;
+  }
+
+  function pinchState() {
+    const [a, b] = [...pointers.values()];
+    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+  }
+
+  function startPan(e) {
+    pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false, middle: e.button === 1 };
+    if (pan.middle) svg.classList.add("is-panning");
+  }
+
+  // Middle button: no autoscroll, no paste on Linux
+  svg.addEventListener("mousedown", (e) => {
+    if (e.button === 1) e.preventDefault();
+  });
+  svg.addEventListener("auxclick", (e) => e.preventDefault());
+  svg.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  svg.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    if (e.button === 1) {
+      e.preventDefault();
+      if (!drag && !pinch) startPan(e);
+      return;
+    }
+    pointers.set(e.pointerId, local(e));
+    if (pointers.size === 2) {
+      if (drag && drag.moved) return;
+      drag = null;
+      pan = null;
+      const s = pinchState();
+      pinch = { ...s, vx: view.x, vy: view.y, k: view.k };
+      return;
+    }
+    if (pointers.size > 2) return;
+    const w = toWorld(e);
+    const hit = hitTest(w);
+    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, mode: "", vx: 0, vy: 0 };
+    else startPan(e);
+  });
+
+  svg.addEventListener("pointermove", (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
+    if (pinch && pointers.size >= 2) {
+      const s = pinchState();
+      const k = Math.max(0.2, Math.min(3, (pinch.k * s.d) / pinch.d));
+      const wx = (pinch.cx - pinch.vx) / pinch.k;
+      const wy = (pinch.cy - pinch.vy) / pinch.k;
+      view = { k, x: s.cx - wx * k, y: s.cy - wy * k };
+      dirty = true;
+      return;
+    }
+    if (drag && e.pointerId === drag.id) {
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) {
+        drag.moved = true;
+        snapshot();
+        if (editing) labels.get(editing.id)?.blur();
+        // Dragging one of several selected bubbles moves them all
+        if (sel.has(drag.b) && sel.size > 1) {
+          selected = drag.b;
+          drag.group = selTops();
+          if (!drag.group.includes(drag.b)) drag.group = [drag.b];
+        } else {
+          select(drag.b);
+          drag.group = [drag.b];
+        }
+        drag.exclude = new Set();
+        for (const g of drag.group) for (const x of subtree(g)) drag.exclude.add(x);
+        svg.classList.add("is-dragging");
+      }
+      if (drag.moved) {
+        const w = toWorld(e);
+        const dx = w.x - drag.last.x;
+        const dy = w.y - drag.last.y;
+        const seen = new Set();
+        for (const g of drag.group) moveTree(g, dx, dy, seen);
+        drag.vx = drag.vx * 0.5 + dx * 0.5;
+        drag.vy = drag.vy * 0.5 + dy * 0.5;
+        drag.t = performance.now();
+        drag.last = w;
+        drag.mode = modeOf(e);
+        dragHint();
+        dirty = true;
+      }
+    } else if (pan && e.pointerId === pan.id) {
+      const dx = e.clientX - pan.sx;
+      const dy = e.clientY - pan.sy;
+      if (!pan.moved && Math.hypot(dx, dy) > 3) pan.moved = true;
+      if (pan.moved) {
+        view.x = pan.vx + dx;
+        view.y = pan.vy + dy;
+        dirty = true;
+      }
+    }
+  });
+
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (pinch) {
+      if (pointers.size < 2) pinch = null;
+      return;
+    }
+    if (drag && e.pointerId === drag.id) {
+      if (drag.moved) {
+        drag.mode = modeOf(e);
+        // A pause before letting go means no throw
+        if (performance.now() - (drag.t || 0) > 150) {
+          drag.vx = 0;
+          drag.vy = 0;
+        }
+        if (e.type !== "pointercancel") drop();
+        svg.classList.remove("is-dragging");
+        hint(IDLE_HINT);
+      } else if (e.type === "pointerup") {
+        if (editing && editing !== drag.b) labels.get(editing.id)?.blur();
+        if (e.shiftKey) toggleSelect(drag.b);
+        else select(drag.b);
+      }
+      drag = null;
+      dirty = true;
+      updateChrome();
+    } else if (pan && e.pointerId === pan.id) {
+      if (!pan.moved && !pan.middle && e.type === "pointerup" && !e.shiftKey) select(null);
+      svg.classList.remove("is-panning");
+      pan = null;
+    }
+  }
+  svg.addEventListener("pointerup", endPointer);
+  svg.addEventListener("pointercancel", endPointer);
+
+  // Double-click: on a bubble write into it, on free space start a new one
+  svg.addEventListener("dblclick", (e) => {
+    const w = toWorld(e);
+    const hit = hitTest(w);
+    if (hit) {
+      startEdit(hit);
+      return;
+    }
+    snapshot();
+    startEdit(make("", w.x, w.y), true);
+    needsSave = true;
+  });
+
+  svg.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const p = local(e);
+      const zoom = e.ctrlKey || e.metaKey || e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40);
+      if (zoom) {
+        const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015) * (e.deltaMode === 1 ? 30 : 1));
+        const k = Math.max(0.2, Math.min(3, view.k * f));
+        view.x = p.x - ((p.x - view.x) * k) / view.k;
+        view.y = p.y - ((p.y - view.y) * k) / view.k;
+        view.k = k;
+      } else {
+        view.x -= e.deltaX;
+        view.y -= e.deltaY;
+      }
+      dirty = true;
+    },
+    { passive: false }
+  );
+
+  function addChild(p) {
+    if (!p || !bubbles.has(p.id)) return;
+    snapshot();
+    startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
+  }
+
+  const MOD_KEYS = new Set(["Shift", "Control", "Meta", "Alt"]);
+  window.addEventListener("keydown", (e) => {
+    if (editing || e.target instanceof HTMLInputElement) return;
+    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
+      drag.mode = modeOf(e);
+      dragHint();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      sel = new Set(bubbles.values());
+      selected = [...sel].pop() || null;
+      dirty = true;
+      updateChrome();
+      flash(`${sel.size} Bubbles ausgewählt`);
+    } else if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+      e.preventDefault();
+      redo();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      undo();
+    } else if ((e.key === "Delete" || e.key === "Backspace") && sel.size) {
+      e.preventDefault();
+      deleteSelection();
+    } else if (e.key === "Enter" && selected) {
+      e.preventDefault();
+      startEdit(selected);
+    } else if (e.key === "Tab" && selected) {
+      e.preventDefault();
+      addChild(selected);
+    } else if (e.key === "Escape") {
+      if (!panel.hidden) toggleMenu(false);
+      else if (!treeEl.hidden) toggleTree(false);
+      else select(null);
+    } else if (selected && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && e.key !== " ") {
+      // Typing on a selected bubble writes into it
+      e.preventDefault();
+      snapshot();
+      selected.text += e.key;
+      const b = selected;
+      startEdit(b);
+      b._snap = true;
+      needsSave = true;
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
+      drag.mode = modeOf(e);
+      dragHint();
+    }
+  });
+
+  // --- Tools ----------------------------------------------------------------------
+  // Keep the text being edited when a tool button is pressed
+  $("tools").addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button") && editing) e.preventDefault();
+  });
+
+  btn.new.addEventListener("click", () => {
+    if (editing) labels.get(editing.id)?.blur();
+    snapshot();
+    const cx = (innerWidth / 2 - view.x) / view.k + (Math.random() - 0.5) * 40;
+    const cy = (innerHeight / 2 - view.y) / view.k + (Math.random() - 0.5) * 40;
+    startEdit(make("", cx, cy), true);
+  });
+  btn.child.addEventListener("click", () => {
+    const p = selected;
+    if (editing) labels.get(editing.id)?.blur();
+    addChild(p);
+  });
+  function deleteSelection() {
+    if (editing) labels.get(editing.id)?.blur();
+    const list = [...sel].filter((b) => bubbles.has(b.id));
+    if (!list.length) return;
+    snapshot();
+    for (const b of list) remove(b);
+    select(null);
+  }
+  btn.del.addEventListener("click", deleteSelection);
+  // Two selected bubbles that may be connected (not one inside the other)
+  function linkPair() {
+    if (sel.size !== 2) return null;
+    const [a, b] = [...sel];
+    if (!bubbles.has(a.id) || !bubbles.has(b.id) || isAncestor(a, b) || isAncestor(b, a)) return null;
+    return [a, b];
+  }
+  btn.link.addEventListener("click", () => {
+    const pair = linkPair();
+    if (!pair) return;
+    const [a, b] = pair;
+    snapshot();
+    if (b.id in a.links) {
+      delete a.links[b.id];
+      delete b.links[a.id];
+      flash(`»${name(a)}« und »${name(b)}« sind getrennt`);
+    } else {
+      a.links[b.id] = 1;
+      b.links[a.id] = 1;
+      flash(`»${name(a)}« und »${name(b)}« sind verbunden`);
+    }
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  });
+  btn.group.addEventListener("click", () => {
+    if (!selected) return;
+    sel = dockGroup(selected);
+    dirty = true;
+    updateChrome();
+    flash(`${sel.size} angedockte Bubbles gewählt: zusammen ziehen verschiebt sie gemeinsam`);
+  });
+  btn.undo.addEventListener("click", undo);
+  btn.redo.addEventListener("click", redo);
+  btn.fit.addEventListener("click", fit);
+  btn.export.addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "notizen.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  btn.import.addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", async () => {
+    const f = importFile.files && importFile.files[0];
+    importFile.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      snapshot();
+      load(Array.isArray(data) ? data : data.bubbles, false);
+      settle();
+      fit();
+      needsSave = true;
+      flash(`»${f.name}« geladen`);
+    } catch (err) {
+      flash("Diese Datei ließ sich nicht lesen. Erwartet wird ein Export aus diesem Tool (.json).");
+    }
+    updateChrome();
+  });
+
+  // --- Settings panel -------------------------------------------------------------
+  const panel = $("panel");
+  const menuBtn = $("menu-btn");
+  const tuneEl = $("tune");
+  const LOOK = new Set(["merge", "flow", "line", "lineOn", "lineColor", "font", "family", "ink", "shade", "saturation", "opacity", "dots"]);
+  const SIZE = new Set(["font", "family", "grow", "weight", "line", "lineOn"]);
+  const inputs = {};
+
+  function saveTune() {
+    try {
+      localStorage.setItem(TUNE_STORE, JSON.stringify(T));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  function applyTune(key) {
+    derive(T);
+    if (SIZE.has(key)) mcache.clear();
+    if (LOOK.has(key) || key === undefined) buildFilters();
+    // Wake everything up so new forces take effect
+    for (const b of bubbles.values()) b.vx += 1e-6;
+    dirty = true;
+    saveTune();
+    if (!panel.hidden) renderPresets();
+  }
+  function buildPanel() {
+    tuneEl.textContent = "";
+    for (const row of SPEC) {
+      if (row.length === 1) {
+        const h = document.createElement("h3");
+        h.textContent = row[0];
+        tuneEl.appendChild(h);
+        continue;
+      }
+      const [key, label, min, max, step] = row;
+      if (Array.isArray(min)) {
+        if (key !== "family") {
+          const h = document.createElement("div");
+          h.className = "tune-label";
+          h.textContent = label;
+          tuneEl.appendChild(h);
+        }
+        const box = document.createElement("div");
+        box.className = "tune-choice c" + min.length;
+        box.setAttribute("role", "group");
+        box.setAttribute("aria-label", label);
+        for (const [value, text] of min) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.id = `tune-${key}-${value}`;
+          b.textContent = text;
+          if (key === "family") b.style.fontFamily = FAMILIES[value];
+          if (key === "weight") b.style.fontWeight = value === "kraeftig" ? 700 : 400;
+          if (key === "palette") b.style.background = `linear-gradient(90deg, ${PALETTES[value].slice(0, 5).join(", ")})`, (b.style.color = "#2c2824");
+          b.addEventListener("click", () => {
+            if (key === "palette" && T.palette !== value) recolor(T.palette, value);
+            T[key] = value;
+            applyTune(key);
+            syncPanel();
+          });
+          box.appendChild(b);
+        }
+        box._choice = true;
+        inputs[key] = box;
+        tuneEl.appendChild(box);
+        continue;
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "tune-row";
+      const id = "tune-" + key;
+      const lab = document.createElement("label");
+      lab.htmlFor = id;
+      lab.textContent = label;
+      wrap.appendChild(lab);
+      const inp = document.createElement("input");
+      inp.id = id;
+      const type = typeof DEFAULTS[key];
+      if (type === "boolean") {
+        inp.type = "checkbox";
+        inp.className = "switch";
+        inp.setAttribute("role", "switch");
+        inp.addEventListener("change", () => {
+          T[key] = inp.checked;
+          applyTune(key);
+          syncPanel();
+        });
+        wrap.appendChild(inp);
+      } else if (type === "string") {
+        // Free colour, with a way back to automatic
+        const box = document.createElement("span");
+        box.className = "tune-color";
+        const auto = document.createElement("button");
+        auto.type = "button";
+        auto.id = id + "-auto";
+        auto.textContent = "Automatisch";
+        auto.addEventListener("click", () => {
+          T[key] = "";
+          applyTune(key);
+          syncPanel();
+        });
+        inp.type = "color";
+        inp.addEventListener("input", () => {
+          T[key] = inp.value;
+          applyTune(key);
+          auto.setAttribute("aria-pressed", "false");
+        });
+        inp._auto = auto;
+        box.append(auto, inp);
+        wrap.appendChild(box);
+      } else {
+        const val = document.createElement("span");
+        val.className = "tune-val";
+        wrap.appendChild(val);
+        inp.type = "range";
+        inp.min = min;
+        inp.max = max;
+        inp.step = step;
+        inp.addEventListener("input", () => {
+          T[key] = Number(inp.value);
+          val.textContent = show(key, T[key]);
+          applyTune(key);
+        });
+        inp._val = val;
+        wrap.appendChild(inp);
+      }
+      inputs[key] = inp;
+      tuneEl.appendChild(wrap);
+    }
+    syncPanel();
+  }
+  // Slider values in words or percent rather than raw numbers
+  function show(key, v) {
+    if (key === "line") return v < 0.05 ? "keine" : v.toFixed(1) + " px";
+    if (key === "shade") return v < 0.01 ? "flach" : Math.round(v * 100) + " %";
+    if (key === "font" || key === "scale" || key === "inner" || key === "spacing" || key === "pull" || key === "push") return Math.round(v * 100) + " %";
+    if (key === "saturation") return v < 0.01 ? "grau" : Math.round(v * 100) + " %";
+    if (key === "linkPull") return v < 0.01 ? "keiner" : Math.round(v * 100) + " %";
+    if (key === "opacity" || key === "flow" || key === "linkW") return Math.round(v * 100) + " %";
+    if (key === "roundness") return v < 0.01 ? "frei" : v > 0.99 ? "rund" : Math.round(v * 100) + " %";
+    return Math.round((v / (key === "grow" ? 2 : 1)) * 100) + " %";
+  }
+  function syncPanel() {
+    renderPresets();
+    for (const key in inputs) {
+      const inp = inputs[key];
+      if (inp._choice) {
+        for (const b of inp.children) b.setAttribute("aria-pressed", String(b.id === `tune-${key}-${T[key]}`));
+      } else if (inp.type === "checkbox") inp.checked = !!T[key];
+      else if (inp.type === "color") {
+        inp.value = T[key] || (key === "lineColor" ? toHex(cssColor("--outline", "#595959")) : themeDark ? "#faf7f2" : "#2c2824");
+        inp._auto.setAttribute("aria-pressed", String(!T[key]));
+      } else {
+        inp.value = T[key];
+        inp._val.textContent = show(key, T[key]);
+        // Sliders that only matter while their switch says so
+        const off = (key === "roundness" && T.round) || (key === "line" && !T.lineOn);
+        if (key === "roundness" || key === "line") {
+          inp.disabled = off;
+          inp.parentElement.style.opacity = off ? "0.45" : "";
+        }
+      }
+    }
+  }
+  function toHex(c) {
+    if (HEX.test(c)) return c;
+    const m = c.match(/\d+/g);
+    if (!m) return "#595959";
+    return "#" + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
+  }
+  function toggleMenu(open) {
+    panel.hidden = !open;
+    menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) syncPanel();
+  }
+  menuBtn.addEventListener("click", () => toggleMenu(panel.hidden));
+  // New colour set: every bubble coloured from the old set takes the same slot in the new one
+  function recolor(from, to) {
+    const a = PALETTES[from] || LEGACY[from]?.colors || PALETTES.pastell;
+    const b = PALETTES[to] || PALETTES.pastell;
+    const hit = [...bubbles.values()].filter((x) => x.color && a.includes(x.color.toLowerCase()));
+    if (hit.length) {
+      snapshot();
+      for (const x of hit) x.color = b[a.indexOf(x.color.toLowerCase())];
+      needsSave = true;
+    }
+    queueMicrotask(() => {
+      buildColors();
+      updateChrome();
+    });
+  }
+
+  function setAll(values) {
+    if (values && LEGACY[values.palette]) {
+      recolor(values.palette, LEGACY[values.palette].to);
+      values = { ...values, palette: LEGACY[values.palette].to };
+    }
+    if (values && values.palette && values.palette !== T.palette) recolor(T.palette, values.palette);
+    Object.assign(T, clean(values));
+    mcache.clear();
+    applyTune();
+    syncPanel();
+  }
+  $("tune-reset").addEventListener("click", () => setAll(base()));
+
+  // --- Saved settings -------------------------------------------------------------
+  const presetsEl = $("presets");
+  function savePresets() {
+    try {
+      localStorage.setItem(PRESET_STORE, JSON.stringify(presets));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
+  function renderPresets() {
+    presetsEl.textContent = "";
+    if (!presets.list.length) {
+      const p = document.createElement("p");
+      p.className = "tune-note";
+      p.textContent = "Noch nichts gespeichert.";
+      presetsEl.appendChild(p);
+    }
+    presets.list.forEach((st, i) => {
+      const row = document.createElement("div");
+      row.className = "preset" + (same(T, clean(st.values)) ? " is-current" : "");
+      const nm = document.createElement("button");
+      nm.type = "button";
+      nm.className = "preset-name";
+      nm.id = "style-" + (i + 1);
+      const num = document.createElement("span");
+      num.className = "num";
+      num.textContent = String(i + 1);
+      // A small preview: colour set, font
+      const title = document.createElement("span");
+      const v = clean(st.values);
+      const sw = document.createElement("span");
+      sw.className = "preset-sw";
+      sw.style.background = `linear-gradient(90deg, ${(PALETTES[v.palette] || PALETTES.pastell).slice(0, 4).join(", ")})`;
+      title.append(sw, document.createTextNode([FAMILIES_NAME[v.family], v.round ? "rund" : "frei", v.shade > 0.05 ? "3D" : "flach"].join(" · ")));
+      nm.append(num, title);
+      nm.title = `Einstellungen ${i + 1} laden`;
+      nm.addEventListener("click", () => setAll(st.values));
+      const def = document.createElement("button");
+      def.type = "button";
+      def.className = "preset-def";
+      const isDef = presets.def === st.id;
+      def.textContent = isDef ? "★" : "☆";
+      def.setAttribute("aria-pressed", String(isDef));
+      def.title = isDef ? "Nicht mehr beim Öffnen verwenden" : "Beim Öffnen verwenden";
+      def.addEventListener("click", () => {
+        presets.def = isDef ? null : st.id;
+        savePresets();
+        renderPresets();
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "preset-del";
+      del.textContent = "×";
+      del.setAttribute("aria-label", `Einstellungen ${i + 1} löschen`);
+      del.addEventListener("click", () => {
+        presets.list = presets.list.filter((x) => x !== st);
+        if (presets.def === st.id) presets.def = null;
+        savePresets();
+        renderPresets();
+      });
+      row.append(nm, def, del);
+      presetsEl.appendChild(row);
+    });
+  }
+  const FAMILIES_NAME = { sans: "Manrope", serif: "Playfair", mono: "DM Mono" };
+  $("preset-add").addEventListener("click", () => {
+    const values = {};
+    for (const k in DEFAULTS) values[k] = T[k];
+    presets.list.push({ id: "c" + Date.now().toString(36), values });
+    savePresets();
+    renderPresets();
+    flash(`Als ${presets.list.length} gespeichert`);
+  });
+
+  // --- Theme ----------------------------------------------------------------------
+  const THEME_STORE = "notizen-theme-v1";
+  const darkMq = matchMedia("(prefers-color-scheme: dark)");
+  function setTheme(mode, keep) {
+    if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+    else delete document.documentElement.dataset.theme;
+    if (!keep) {
+      try {
+        localStorage.setItem(THEME_STORE, mode);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  const themeMode = () => document.documentElement.dataset.theme || "system";
+  const isDark = () => themeMode() === "dark" || (themeMode() === "system" && darkMq.matches);
+  for (const m of ["light", "dark", "system"]) $("theme-" + m).addEventListener("click", () => setTheme(m));
+  $("theme-btn").addEventListener("click", () => setTheme(isDark() ? "light" : "dark"));
+  const onTheme = () => {
+    document.documentElement.dataset.dark = isDark() ? "1" : "0";
+    for (const m of ["light", "dark", "system"]) $("theme-" + m).setAttribute("aria-pressed", String(themeMode() === m));
+    $("theme-btn").title = isDark() ? "Zur hellen Ansicht" : "Zur dunklen Ansicht";
+    buildFilters();
+    syncPanel();
+  };
+  onTheme();
+  darkMq.addEventListener?.("change", onTheme);
+  new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  addEventListener("resize", () => {
+    dirty = true;
+  });
+
+  // Web fonts arrive after the first measure: measure again
+  document.fonts?.ready.then(() => {
+    mcache.clear();
+    dirty = true;
+  });
+  document.fonts?.addEventListener?.("loadingdone", () => {
+    mcache.clear();
+    dirty = true;
+  });
+
+  // --- Structure panel (left) -----------------------------------------------------
+  const treeEl = $("tree");
+  const treeBtn = $("tree-btn");
+  function toggleTree(open) {
+    treeEl.hidden = !open;
+    treeBtn.setAttribute("aria-expanded", String(open));
+    if (open) renderTree();
+  }
+  treeBtn.addEventListener("click", () => toggleTree(treeEl.hidden));
+
+  function renderTree() {
+    const scroll = treeEl.scrollTop;
+    treeEl.textContent = "";
+    const mk = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    const byPos = (a, b) => a.y - b.y || a.x - b.x;
+    const node = (b, via) => {
+      const li = mk("li");
+      const bt = mk("button", "node");
+      bt.type = "button";
+      bt.dataset.id = b.id;
+      bt.dataset.via = via || "";
+      if (sel.has(b)) bt.setAttribute("aria-current", "true");
+      const dot = mk("span", "dot");
+      const col = colorOf(b);
+      if (col) dot.style.setProperty("--dot-c", col);
+      const txt = mk("span", "txt", name(b));
+      const docked = Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean);
+      if (docked.length) txt.appendChild(mk("span", "also", "angedockt an " + docked.map(name).join(", ")));
+      bt.append(dot, txt);
+      li.appendChild(bt);
+      return li;
+    };
+    const branch = (list, path) => {
+      const ul = mk("ul");
+      for (const b of list.slice().sort(byPos)) {
+        const li = node(b, path[path.length - 1]);
+        if (!path.includes(b.id)) {
+          const k = kids.get(b.id) || [];
+          if (k.length) li.appendChild(branch(k, [...path, b.id]));
+        }
+        ul.appendChild(li);
+      }
+      return ul;
+    };
+    treeEl.appendChild(mk("h3", "", "Hierarchie"));
+    const roots = [...bubbles.values()].filter((b) => !b.parents.length);
+    if (roots.length) treeEl.appendChild(branch(roots, []));
+    else treeEl.appendChild(mk("p", "empty", "Noch keine Bubbles. Doppelklick auf die Fläche legt eine an."));
+
+    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble · mit Shift auf einen Punkt ziehen: dort andocken");
+    rootDrop.dataset.root = "1";
+    treeEl.appendChild(rootDrop);
+
+    treeEl.appendChild(mk("h3", "", "Angedockt"));
+    const seen = new Set();
+    const groups = [];
+    for (const b of [...bubbles.values()].sort(byPos)) {
+      if (seen.has(b) || !Object.keys(b.docks).length) continue;
+      const g = [...dockGroup(b)].sort(byPos);
+      for (const x of g) seen.add(x);
+      groups.push(g);
+    }
+    if (!groups.length) treeEl.appendChild(mk("p", "empty", "Nichts. Bubbles aneinander schieben und loslassen dockt sie an."));
+    else {
+      const ul = mk("ul");
+      for (const g of groups) {
+        const li = mk("li", "dock-group");
+        li.appendChild(mk("span", "also", g.map(name).join(" · ")));
+        ul.appendChild(li);
+      }
+      treeEl.appendChild(ul);
+    }
+    treeEl.scrollTop = scroll;
+  }
+
+  function focusOn(b) {
+    const W = innerWidth;
+    const H = innerHeight;
+    const left = treeEl.hidden ? 0 : treeEl.offsetWidth;
+    const k = view.k;
+    view.x = left + (W - left) / 2 - b.x * k;
+    view.y = H / 2 - 40 - b.y * k;
+    dirty = true;
+  }
+  treeEl.addEventListener("click", (e) => {
+    const bt = e.target.closest(".node");
+    if (!bt || treeClickBlock) return;
+    const b = bubbles.get(bt.dataset.id);
+    if (!b) return;
+    if (e.shiftKey) toggleSelect(b);
+    else {
+      select(b);
+      if (innerWidth > 640) focusOn(b);
+    }
+  });
+  // Drag in the tree: drop on an entry to put it in there; with Shift it stays
+  // where it is and is linked there as well (one bubble under both). Drop on the
+  // dashed field to make it a main bubble. The canvas follows.
+  let treeDrag = null;
+  let treeClickBlock = false;
+  function treeDropOk(t) {
+    if (!treeDrag || !t) return false;
+    if (t.dataset.root) return treeDrag.b.parents.length > 0;
+    const target = bubbles.get(t.dataset.id);
+    if (!target || subtree(treeDrag.b).has(target)) return false;
+    return treeDrag.shift ? !(target.id in treeDrag.b.docks) : !treeDrag.b.parents.includes(target.id);
+  }
+  function treeDragShow() {
+    const d = treeDrag;
+    if (!d || !d.ghost) return;
+    const t = d.target;
+    const ok = treeDropOk(t);
+    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) if (n !== t) n.classList.remove("drop-into", "drop-link");
+    const link = d.shift && ok && !t.dataset.root;
+    if (t) {
+      t.classList.toggle("drop-into", ok && !link);
+      t.classList.toggle("drop-link", link);
+    }
+    const target = ok && !t.dataset.root ? bubbles.get(t.dataset.id) : null;
+    d.ghost.querySelector(".what").textContent = name(d.b);
+    d.ghost.querySelector(".how").textContent = !ok
+      ? d.shift
+        ? "Auf einen Punkt ziehen, um dort anzudocken"
+        : "Auf einen Punkt ziehen · mit Shift: andocken"
+      : t.dataset.root
+        ? "→ eigene Haupt-Bubble"
+        : link
+          ? `⊕ an »${name(target)}« andocken`
+          : `→ in »${name(target)}« · mit Shift: andocken`;
+    d.ghost.classList.toggle("link", link);
+  }
+  treeEl.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const bt = e.target.closest(".node");
+    const b = bt && bubbles.get(bt.dataset.id);
+    if (!b) return;
+    treeDrag = { b, via: bt.dataset.via || null, x: e.clientX, y: e.clientY, id: e.pointerId, shift: e.shiftKey, ghost: null, target: null };
+  });
+  window.addEventListener("pointermove", (e) => {
+    const d = treeDrag;
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.ghost) {
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+      d.ghost = document.createElement("div");
+      d.ghost.className = "tree-ghost";
+      d.ghost.innerHTML = '<span class="what"></span><span class="how"></span>';
+      document.body.appendChild(d.ghost);
+      treeEl.classList.add("dragging");
+    }
+    e.preventDefault();
+    d.shift = e.shiftKey;
+    d.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 10}px)`;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    d.target = under && treeEl.contains(under) ? under.closest(".node, .drop-root") : null;
+    treeDragShow();
+    // Scroll the list when dragging near its edges
+    const r = treeEl.getBoundingClientRect();
+    if (e.clientY < r.top + 40) treeEl.scrollTop -= 12;
+    else if (e.clientY > r.bottom - 40) treeEl.scrollTop += 12;
+  });
+  for (const k of ["keydown", "keyup"])
+    window.addEventListener(k, (e) => {
+      if (treeDrag && treeDrag.ghost && e.key === "Shift") {
+        treeDrag.shift = k === "keydown";
+        treeDragShow();
+      }
+    });
+  function treeDragEnd() {
+    const d = treeDrag;
+    treeDrag = null;
+    if (!d || !d.ghost) return null;
+    d.ghost.remove();
+    treeEl.classList.remove("dragging");
+    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) n.classList.remove("drop-into", "drop-link");
+    treeClickBlock = true;
+    setTimeout(() => (treeClickBlock = false), 0);
+    return d;
+  }
+  window.addEventListener("pointercancel", treeDragEnd);
+  window.addEventListener("pointerup", (e) => {
+    if (!treeDrag || e.pointerId !== treeDrag.id) return;
+    const shift = treeDrag.shift || e.shiftKey;
+    const t = treeDrag.target;
+    const ok = treeDropOk(t);
+    const d = treeDragEnd();
+    if (!d || !ok) return;
+    const { b, via } = d;
+    snapshot();
+    if (t.dataset.root) {
+      // Out of the bubble it was dragged from (or out of all), below its old place
+      const from = bubbles.get(via) || bubbles.get(b.parents[0]);
+      undockAll(b);
+      keepColor(b);
+      b.parents = via ? b.parents.filter((id) => id !== via) : [];
+      if (b.parents.length) {
+        flash(`»${name(b)}« ist aus »${name(from)}« gelöst`);
+      } else if (from) {
+        const top = anchor(from);
+        moveTree(b, top.x - b.x, top.y + top.r + b.r + 60 - b.y);
+        flash(`»${name(b)}« ist jetzt eine eigene Bubble`);
+      }
+    } else {
+      const target = bubbles.get(t.dataset.id);
+      if (shift) {
+        // Dock next to the target, on its level
+        if (!sameLevel(b, target)) undockAll(b);
+        keepColor(b);
+        b.parents = [...target.parents];
+        topo();
+        const ang = Math.random() * Math.PI * 2;
+        const dist = (target.r + b.r) * 0.85;
+        moveTree(b, target.x + Math.cos(ang) * dist - b.x, target.y + Math.sin(ang) * dist - b.y);
+        dockPair(b, target, 0.85);
+        flash(`»${name(b)}« ist an »${name(target)}« angedockt`);
+      } else {
+        undockAll(b);
+        keepColor(b);
+        b.parents = [target.id];
+        moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
+        flash(`»${name(b)}« liegt jetzt in »${name(target)}«`);
+      }
+    }
+    topo();
+    b.vx = 0;
+    b.vy = 0;
+    select(b);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  });
+
+  treeEl.addEventListener("dblclick", (e) => {
+    const bt = e.target.closest(".node");
+    const b = bt && bubbles.get(bt.dataset.id);
+    if (b) {
+      focusOn(b);
+      startEdit(b);
+    }
+  });
+
+  // --- Start ----------------------------------------------------------------------
+  buildFilters();
+  buildColors();
+  buildPanel();
+
+  let stored = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(STORE) || "null");
+  } catch (e) {
+    stored = null;
+  }
+  if (stored && Array.isArray(stored.bubbles)) {
+    load(stored.bubbles, false);
+    // Colours from the earlier sets move to the sets that replaced them
+    for (const b of bubbles.values())
+      for (const k in LEGACY) {
+        const i = b.color ? LEGACY[k].colors.indexOf(b.color.toLowerCase()) : -1;
+        if (i >= 0) {
+          b.color = PALETTES[LEGACY[k].to][i];
+          needsSave = true;
+        }
+      }
+    hint(IDLE_HINT);
+  } else {
+    sample();
+    hintEl.textContent = "Beispiel zum Ausprobieren: alles lässt sich umschreiben, verschieben, umfärben oder löschen.";
+    setTimeout(() => hint(IDLE_HINT), 6000);
+  }
+  settle();
+  for (const b of bubbles.values()) {
+    b.vx = 0;
+    b.vy = 0;
+  }
+  fit();
+  updateChrome();
+
+  function frame() {
+    const energy = step();
+    if (energy > 0.5) needsSave = true;
+    if (energy > 0.02 || dirty) {
+      render();
+      dirty = false;
+    }
+    requestAnimationFrame(frame);
+  }
+  setInterval(() => {
+    if (needsSave && !drag) save();
+  }, 1000);
+  addEventListener("pagehide", () => {
+    if (needsSave) save();
+  });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,16 +1,26 @@
 # Notizen
 
-> **Neu auf diesem Branch: [`gefuege.html`](gefuege.html)**, ein grundlegend neu gedachtes Werkzeug
-> für Zuständigkeiten in einer Firma: Bereiche, Rollen und Menschen in drei Linsen (Bereiche,
-> Menschen, Netz), eine Suche „Wer ist zuständig für …?“ und ein Lücken-Radar.
-> Gedanken und Recherche dazu stehen in [`KONZEPT.md`](KONZEPT.md). Die bisherigen
-> Bubble-Notizen (`index.html`) bleiben unverändert.
+Zuständigkeiten einer Firma als lebendige Bubble-Karte: **Bereiche**, **Rollen** und **Menschen**,
+gezeigt in drei Linsen, die weich ineinander übergehen. Gedanken und Recherche dazu stehen in
+[`KONZEPT.md`](KONZEPT.md).
 
-Notizen als Bubbles auf einem freien Brett, im Look der Website: Bubbles, die man
-aneinanderschiebt, verschmelzen wie Tropfen und bleiben so angedockt; jede behält ihre Farbe.
+- **Bereiche**: Rollen in ihren Bereichen, Menschen als Punkte. Rolle in einen anderen Bereich ziehen verschiebt sie, einen Personen-Punkt auf eine andere Rolle ziehen überträgt die Aufgabe (Shift: teilen, auf die freie Fläche: abgeben).
+- **Menschen**: jede Person eine Bubble, ihre Rollen docken an und verschmelzen mit ihr. Rolle auf eine Person ziehen überträgt sie, mit Shift wird sie geteilt.
+- **Netz**: wer liefert an wen, wer arbeitet mit wem, wer unterstützt wen. Rolle auf eine andere ziehen verbindet sie.
+- **„Wer ist zuständig für …?“** oben sucht in Rollen, Aufgaben und Namen und zeigt Bereich › Rolle › Person.
+- **Lücken** zeigt Rollen ohne Person, doppelt verantwortete Aufgaben und Menschen mit vielen Rollen.
+- **Doppelklick** legt an, **Klick** öffnet rechts die Karte zum Bearbeiten, **Entf** löscht, **Strg/Cmd+Z** macht rückgängig, **1 2 3** wechselt die Linse, **/** sucht.
+- **Mausrad** zoomt überall, auch über den Bubbles; Ziehen auf der freien Fläche oder die **mittlere Maustaste** verschiebt die Ansicht.
+- **Menü ☰ oben rechts**: hell, dunkel oder wie System; Farbset (Frisch, Pastell, Abend, Mono), Farbverlauf, Farbstärke, Deckkraft, Verschmelzen, Abstand der Rollen, Plastisch, Kontur, Schrift, Punkte im Hintergrund. Dazu Datei sichern und laden.
 
-Die frühere Version mit Mehrfach-Zuordnung (eine Bubble in mehreren Bubbles) liegt als
-`hierarchie.html` im Repository und lässt sich dort weiter öffnen.
+Alles wird automatisch im Browser gespeichert (localStorage, pro Gerät und Browser).
+
+## Frühere Versionen
+
+- [`bubbles.html`](bubbles.html): die freien Bubble-Notizen (Andocken, Verschmelzen, Verbinden).
+- [`hierarchie.html`](hierarchie.html): die Version mit Mehrfach-Zuordnung.
+
+### Bedienung von bubbles.html
 
 - **Doppelklick** auf die freie Fläche: neue Haupt-Bubble. Doppelklick auf eine Bubble (oder einfach lostippen, wenn sie ausgewählt ist): hineinschreiben. Enter beginnt einen neuen Absatz; Esc, Strg/Cmd+Enter oder ein Klick daneben beendet.
 - **Klick** wählt eine Bubble aus, **Shift-Klick** nimmt weitere dazu oder wieder heraus (dann wirken Farbe, Löschen und Ziehen auf alle). Dann: **Entf** löscht sie (ihr Inhalt rutscht eine Ebene nach oben), **Tab** legt eine Unterbubble an, die Farbpunkte färben sie ein. Bubbles ohne eigene Farbe übernehmen die Farbe der Bubble, in der sie liegen; verschiedene Farben fließen als Verlauf ineinander.

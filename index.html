@@ -1,2862 +1,1430 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Notizen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
-<script>
-  try {
-    var t = localStorage.getItem("notizen-theme-v1");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch (e) {}
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
-/* Layout: one endless canvas. Bubbles melt under SVG goo filters (like the
-   website's grid); labels ride the same pan/zoom; HUD on top, tools below,
-   settings slide in from the right. */
 :root {
   --bg: #ffffff;
-  --ink: rgba(44, 40, 36, 0.82);
-  --ink-dim: rgba(44, 40, 36, 0.48);
-  --mark: #000000;
+  --ink: rgba(44, 40, 36, 0.86);
+  --ink-dim: rgba(44, 40, 36, 0.52);
+  --mark: #111111;
   --outline: #595959;
   --d0: #ffffff;
   --d1: #f7f6f3;
-  --d2: #efede9;
-  --d3: #e7e4df;
   --dot: #e6e3de;
-  --panel: rgba(255, 255, 255, 0.94);
-  --line: rgba(0, 0, 0, 0.14);
+  --panel: rgba(255, 255, 255, 0.95);
+  --line: rgba(0, 0, 0, 0.13);
+  --warn: #d98a12;
+  --wash1: rgba(255, 138, 115, 0.13);
+  --wash2: rgba(90, 169, 255, 0.12);
   --display: "Playfair Display", "Times New Roman", Times, serif;
   --text: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
-  --label-font: var(--text);
-  --fs: 1;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
-    --mark: #f4f0ea; --outline: #ffffff; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
-    --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
+    --bg: #161514; --ink: rgba(238, 233, 226, 0.88); --ink-dim: rgba(238, 233, 226, 0.52);
+    --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
+    --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
+    --wash1: rgba(255, 138, 115, 0.07); --wash2: rgba(90, 169, 255, 0.08);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
-  --mark: #f4f0ea; --outline: #ffffff; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
-  --dot: #2a2826; --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.16);
+  --bg: #161514; --ink: rgba(238, 233, 226, 0.88); --ink-dim: rgba(238, 233, 226, 0.52);
+  --mark: #f4f0ea; --outline: #d9d4cc; --d0: #1d1c1a; --d1: #252321; --dot: #2a2826;
+  --panel: rgba(30, 29, 27, 0.95); --line: rgba(255, 255, 255, 0.15); --warn: #f0a63a;
+  --wash1: rgba(255, 138, 115, 0.07); --wash2: rgba(90, 169, 255, 0.08);
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-html, body {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
+html, body { margin: 0; height: 100%; }
+body {
   background: var(--bg);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px),
+    radial-gradient(circle at 8% 0%, var(--wash1), transparent 42%),
+    radial-gradient(circle at 95% 100%, var(--wash2), transparent 45%);
+  background-size: 22px 22px, 100% 100%, 100% 100%;
   color: var(--ink);
   font-family: var(--text);
-}
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-
-#canvas {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  background-color: var(--bg);
-}
-#canvas.has-dots { background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); }
-#canvas.is-dragging { cursor: grabbing; }
-#canvas.is-panning { cursor: move; }
-
-#labels {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  transform-origin: 0 0;
-  pointer-events: none;
-}
-.label, #measure {
-  position: absolute;
-  left: 0;
-  top: 0;
-  margin: 0;
-  text-align: center;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  line-height: 1.22;
-  letter-spacing: -0.005em;
-  color: var(--ink);
-  font-family: var(--label-font);
-}
-.label { outline: none; cursor: text; caret-color: var(--ink); }
-.label.editing { pointer-events: auto; }
-.label.is-empty::before { content: "Notiz"; color: var(--ink-dim); }
-/* Text on a coloured bubble follows the colour, not the theme */
-.label.on-light { color: var(--ink-l, rgba(44, 40, 36, 0.86)); caret-color: var(--ink-l, rgba(44, 40, 36, 0.86)); }
-.label.on-dark { color: var(--ink-d, rgba(250, 247, 242, 0.92)); caret-color: var(--ink-d, rgba(250, 247, 242, 0.92)); }
-#tree .node.drop-into { outline: 1.5px solid var(--ink); outline-offset: -1px; }
-#tree .node.drop-link { outline: 1.5px dashed var(--ink); outline-offset: -1px; background: var(--line); }
-#tree .node { touch-action: none; -webkit-user-select: none; user-select: none; }
-#tree.dragging, #tree.dragging * { cursor: grabbing; }
-.tree-ghost {
-  position: fixed;
-  left: 0;
-  top: 0;
-  z-index: 60;
-  max-width: 300px;
-  padding: 0.4rem 0.6rem;
-  border-radius: 8px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: 13px;
-  line-height: 1.35;
-  pointer-events: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-}
-.tree-ghost .what { display: block; font-weight: 600; }
-.tree-ghost .how { display: block; font-size: 12px; opacity: 0.8; }
-.tree-ghost.link .how { opacity: 1; }
-.tune-choice .ink-dot { display: inline-block; width: 0.7em; height: 0.7em; margin-right: 0.4em; border-radius: 50%; vertical-align: -0.05em; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.5); }
-#tree .drop-root { margin: 0.6rem 0.4rem 0; padding: 0.5rem; border: 1px dashed var(--ink-dim); border-radius: 8px; text-align: center; color: var(--ink-dim); font-size: 12px; }
-#tree .drop-root.drop-into { border-color: var(--ink); color: var(--ink); }
-#measure { visibility: hidden; pointer-events: none; overflow-wrap: normal; }
-
-#hud {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: calc(env(safe-area-inset-top, 0px) + 0.9rem) 1.25rem 0;
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  pointer-events: none;
-}
-#mark {
-  margin: 0;
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.03em;
-  color: var(--mark);
-}
-#crumb {
-  flex: 1;
-  margin: 0;
-  min-width: 0;
   font-size: 14px;
-  letter-spacing: 0.04em;
-  color: var(--ink-dim);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  -webkit-font-smoothing: antialiased;
 }
+button, input, select, textarea { font: inherit; color: inherit; }
+body.nodots { background-image: radial-gradient(circle at 8% 0%, var(--wash1), transparent 42%), radial-gradient(circle at 95% 100%, var(--wash2), transparent 45%); background-size: 100% 100%; }
+:root { --label-font: var(--text); }
+button { cursor: pointer; }
 
-#tree-btn {
-  pointer-events: auto;
-  font-size: 14px;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  border-bottom: 1.2px solid var(--ink);
-  padding-bottom: 1px;
-}
-#tree-btn[aria-expanded="true"] { opacity: 0.55; }
-#hud { z-index: 30; }
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+#stage [data-k] { cursor: pointer; }
+#stage.dragging, #stage.dragging [data-k] { cursor: grabbing; }
 
-#tree {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 25;
-  width: min(300px, 100%);
-  padding: calc(env(safe-area-inset-top, 0px) + 3.6rem) 0.75rem calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  font-size: 13px;
+/* ---------- top bar ---------- */
+.top {
+  position: fixed; top: 14px; left: 16px; right: 16px; z-index: 5;
+  display: flex; align-items: flex-start; gap: 12px; pointer-events: none;
 }
-#tree h3 {
-  margin: 1rem 0.4rem 0.35rem;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
+.top > * { pointer-events: auto; }
+.brand { font-family: var(--display); font-size: 24px; line-height: 38px; letter-spacing: 0.01em; margin-right: 4px; white-space: nowrap; }
+.pill {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
-#tree h3:first-child { margin-top: 0; }
-#tree ul { list-style: none; margin: 0; padding: 0; }
-#tree ul ul { margin-left: 0.55rem; padding-left: 0.6rem; border-left: 1px solid var(--line); }
-#tree .node {
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  width: 100%;
-  padding: 0.28rem 0.4rem;
-  border-radius: 6px;
-  text-align: left;
-  line-height: 1.3;
+.lenses { display: flex; padding: 3px; gap: 2px; height: 38px; }
+.lenses button {
+  border: 0; background: none; border-radius: 999px; padding: 0 14px; height: 30px;
+  font-weight: 600; font-size: 13px; color: var(--ink-dim);
 }
-#tree .node:hover { background: var(--line); }
-#tree .node[aria-current="true"] { background: var(--ink); color: var(--bg); }
-#tree .dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1px solid var(--ink-dim);
-  background: var(--dot-c, transparent);
-  transform: translateY(1px);
+.lenses button[aria-pressed="true"] { background: var(--mark); color: var(--bg); }
+.search { position: relative; flex: 1 1 auto; max-width: 460px; margin: 0 auto; }
+.search input {
+  width: 100%; height: 38px; padding: 0 16px 0 38px; outline: none;
 }
-#tree .txt { min-width: 0; overflow-wrap: anywhere; }
-#tree .also { display: block; font-size: 11px; color: var(--ink-dim); }
-#panel .version { margin: 12px 0 4px; font-size: 11px; opacity: 0.55; }
-#tree .node[aria-current="true"] .also { color: inherit; opacity: 0.7; }
-#tree .empty { margin: 0.3rem 0.4rem; color: var(--ink-dim); }
+.search input:focus { border-color: var(--ink-dim); }
+.search > svg { position: absolute; left: 14px; top: 12px; opacity: 0.55; z-index: 1; pointer-events: none; }
+.results {
+  position: absolute; top: 44px; left: 0; right: 0; border-radius: 16px; padding: 6px;
+  display: none; max-height: 60vh; overflow: auto;
+}
+.results.open { display: block; }
+.res { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 11px; border-radius: 10px; }
+.res:hover, .res.active { background: var(--d1); }
+.res b { font-weight: 700; }
+.res .path { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); display: block; margin-bottom: 2px; }
+.res .who { display: block; margin-top: 3px; font-size: 12.5px; }
+.res .acc { display: block; font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
+.res mark { background: none; color: var(--ink); box-shadow: inset 0 -0.45em 0 rgba(217, 138, 18, 0.35); }
+.res .none { color: var(--warn); font-weight: 600; }
+.res-empty { padding: 10px 12px; color: var(--ink-dim); }
+.right { display: flex; gap: 8px; }
+.ibtn {
+  height: 38px; min-width: 38px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  font-weight: 600; font-size: 13px;
+}
+.ibtn[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+.badge { font-family: var(--mono); font-size: 11px; background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 7px; }
+.pop {
+  position: fixed; top: 60px; right: 16px; z-index: 6; width: 300px; max-height: 70vh; overflow: auto;
+  border-radius: 16px; padding: 10px; display: none;
+}
+.pop.open { display: block; }
+.pop h4 { margin: 8px 8px 4px; font-size: 11px; font-family: var(--mono); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); }
+.pop button.item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 8px; }
+.pop button.item:hover { background: var(--d1); }
+.pop .ok { padding: 8px; color: var(--ink-dim); }
+#menuPop { width: 320px; }
+.set { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 5px 8px; font-size: 13px; }
+.set output { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.set input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--mark); margin: 2px 0 0; }
+.set input:disabled { opacity: 0.35; }
+.seg { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 8px 6px; }
+.seg button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; }
+.seg button[aria-pressed="true"] { background: var(--mark); color: var(--bg); border-color: var(--mark); }
+.seg .sws { display: inline-flex; }
+.seg .sws i { width: 9px; height: 9px; border-radius: 50%; margin-left: -2px; border: 1px solid var(--line); }
+.sw-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: 13px; }
+.switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; margin: 0; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--d0); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+.switch:checked { background: var(--mark); }
+.switch:checked::after { left: 16px; }
+.pop hr { border: 0; border-top: 1px solid var(--line); margin: 8px 4px; }
 
-.tune-choice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0.3rem 0; }
-.tune-choice button {
-  padding: 7px 4px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  text-align: center;
-  font-size: 13px;
+/* ---------- detail panel ---------- */
+.panel {
+  position: fixed; top: 66px; right: 16px; bottom: 16px; width: 350px; z-index: 4;
+  border-radius: 20px; padding: 18px 18px 22px; overflow: auto;
+  transform: translateX(calc(100% + 30px)); transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
 }
-.tune-choice button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.panel.open { transform: none; }
+.panel .kind { font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-dim); display: flex; justify-content: space-between; align-items: center; }
+.panel .x { border: 0; background: none; font-size: 20px; line-height: 1; padding: 2px 4px; color: var(--ink-dim); }
+.panel .name {
+  width: 100%; border: 0; border-bottom: 1px solid transparent; background: none; outline: none;
+  font-family: var(--display); font-size: 26px; padding: 4px 0 6px; margin: 2px 0 6px;
+}
+.panel .name:focus { border-bottom-color: var(--line); }
+.panel .crumb { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 14px; }
+.panel .crumb button { border: 0; background: none; padding: 0; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; color: inherit; }
+.panel section { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.panel label.h { display: block; font-size: 11px; font-family: var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 8px; }
+.panel textarea, .panel input.t, .panel select {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--d1); padding: 8px 10px; outline: none; resize: vertical;
+}
+.panel textarea:focus, .panel input.t:focus { border-color: var(--ink-dim); }
+.accs { display: flex; flex-direction: column; gap: 6px; }
+.acc { display: flex; gap: 6px; align-items: center; }
+.acc input { flex: 1; }
+.acc.dup input { border-color: var(--warn); }
+.mini { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; }
+.mini:hover { background: var(--d1); }
+.del { border: 0; background: none; color: var(--ink-dim); font-size: 17px; padding: 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 5px 11px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--mark); color: var(--bg); border-color: var(--mark); }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.rel { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
+.rel .k { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); white-space: nowrap; }
+.rel .go { border: 0; background: none; padding: 0; text-align: left; font-weight: 600; flex: 1; }
+.addrel { display: flex; gap: 6px; margin-top: 6px; }
+.addrel select { flex: 1; padding: 6px 8px; font-size: 12.5px; }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.sw { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); padding: 0; }
+.sw[aria-pressed="true"] { outline: 2px solid var(--mark); outline-offset: 2px; }
+.note { font-size: 12.5px; color: var(--warn); margin: 4px 0 0; }
+.danger { margin-top: 18px; border: 1px solid var(--line); background: none; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; color: var(--ink-dim); }
+.danger:hover { color: #c0392b; border-color: #c0392b; }
+.load { height: 6px; background: var(--d1); border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
+.load i { display: block; height: 100%; background: var(--ink-dim); border-radius: 3px; }
+.load.heavy i { background: var(--warn); }
 
-#theme-btn {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
-  right: calc(0.9rem + 50px);
-  z-index: 30;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-content: center;
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--ink);
+/* ---------- bottom ---------- */
+.hint {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 3;
+  padding: 8px 16px; font-size: 12.5px; color: var(--ink-dim); max-width: calc(100% - 32px); text-align: center;
+  transition: color 0.2s;
 }
-#theme-btn svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
-#theme-btn .moon { display: none; fill: currentColor; stroke: none; }
-:root[data-dark="1"] #theme-btn .moon { display: block; }
-:root[data-dark="1"] #theme-btn .sun, :root[data-dark="1"] #theme-btn .rays { display: none; }
-.tune-sec { padding-bottom: 0.4rem; border-bottom: 1px solid var(--line); }
-.tune-label { padding: 0.45rem 0 0.1rem; }
-.tune-color { display: flex; align-items: center; gap: 0.5rem; }
-.tune-color button { padding: 0.25rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; color: var(--ink-dim); }
-.tune-color button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-input.switch {
-  appearance: none;
-  -webkit-appearance: none;
-  position: relative;
-  width: 38px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--line);
-  cursor: pointer;
-  transition: background 0.2s;
-}
-input.switch::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--bg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s;
-}
-input.switch:checked { background: var(--ink); }
-input.switch:checked::after { transform: translateX(16px); }
-.preset-sw { display: inline-block; width: 22px; height: 10px; margin-right: 0.45rem; border-radius: 3px; vertical-align: 0; }
-.tune-choice.c2, .tune-choice.c4 { grid-template-columns: repeat(2, 1fr); }
-/* Hamburger (same three lines as the website's settings button) */
-#menu-btn {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
-  right: 0.9rem;
-  z-index: 30;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-content: center;
-  gap: 4px;
-  border-radius: 12px;
-  background: var(--panel);
-}
-#menu-btn span {
-  display: block;
-  width: 18px;
-  height: 1.5px;
-  background: var(--ink);
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s;
-}
-#menu-btn[aria-expanded="true"] span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
-#menu-btn[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
-#menu-btn[aria-expanded="true"] span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+.hint.live { color: var(--ink); border-color: var(--ink-dim); }
+.corner { position: fixed; left: 16px; bottom: 16px; z-index: 3; display: flex; gap: 6px; }
+.legend { position: fixed; right: 16px; bottom: 16px; z-index: 3; padding: 8px 14px; font-size: 12px; display: none; gap: 14px; color: var(--ink-dim); }
+.legend.on { display: flex; }
+.panel.open ~ .legend { right: 382px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
 
-#panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 25;
-  width: min(330px, 100%);
-  padding: calc(env(safe-area-inset-top, 0px) + 4rem) 1.1rem calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--panel);
-  border-left: 1px solid var(--line);
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-}
-#panel h2 {
-  margin: 0 0 0.25rem;
-  font-family: var(--display);
-  font-size: 20px;
-  letter-spacing: -0.02em;
-  color: var(--mark);
-}
-#panel h3 {
-  margin: 1.1rem 0 0.35rem;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-.tune-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 0.15rem 0.5rem;
-  padding: 0.3rem 0;
-}
-.tune-row input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--ink); }
-.tune-row input[type="checkbox"] { margin: 0; accent-color: var(--ink); }
-.tune-row input[type="color"] { width: 44px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
-.tune-val { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
-.tune-note { margin: 0.2rem 0 0; color: var(--ink-dim); line-height: 1.45; }
-.preset {
-  display: grid;
-  grid-template-columns: 1fr 32px 32px;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.1rem 0;
-}
-.preset-name {
-  display: grid;
-  grid-template-columns: 1.6rem 1fr;
-  align-items: baseline;
-  padding: 0.4rem 0.5rem;
-  border-radius: 8px;
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-}
-.preset-name .num { color: var(--ink-dim); }
-.preset-name .sub { grid-column: 2; font-size: 11px; color: var(--ink-dim); }
-.preset-name:hover { background: var(--line); }
-.preset.is-current .preset-name { background: var(--line); font-weight: 600; }
-.preset-def { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); border-radius: 8px; }
-.preset-def:hover { color: var(--ink); }
-.preset-def[aria-pressed="true"] { color: var(--ink); }
-.preset-del { width: 32px; height: 32px; text-align: center; font-size: 16px; line-height: 1; color: var(--ink-dim); }
-.preset-del:hover { color: var(--ink); }
-.tune-add {
-  width: 100%;
-  margin-top: 0.4rem;
-  padding: 0.5rem;
-  text-align: center;
-  border: 1px dashed var(--ink-dim);
-  border-radius: 8px;
-}
-.tune-actions { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
-.tune-actions button {
-  flex: 1;
-  padding: 0.55rem;
-  text-align: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
+/* svg text */
+.lbl-role { font-family: var(--label-font); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-area { font-family: var(--display); font-weight: 600; fill: var(--ink); pointer-events: none; letter-spacing: 0.02em; }
+.lbl-person { font-family: var(--label-font); font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lbl-sub { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-dim); text-anchor: middle; pointer-events: none; }
+.chipt { font-family: var(--mono); font-size: 8.5px; font-weight: 500; fill: var(--ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.lnk-t { font-family: var(--mono); font-size: 10px; fill: var(--ink-dim); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
 
-#dock {
-  position: fixed;
-  left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100% - 2rem);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-}
-#hint {
-  margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  color: var(--ink-dim);
-  text-align: center;
-  text-wrap: balance;
-}
-#hint.is-live { color: var(--ink); }
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-#tools button {
-  padding: 7px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-#tools button:hover:not(:disabled) { border-color: var(--ink-dim); }
-#tools button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-#tools button:disabled { opacity: 0.35; cursor: default; }
-#tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px; }
-
-#colors { padding: 6px 8px; gap: 8px; }
-#colors .swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--sw);
-}
-#colors .swatch[aria-pressed="true"] { outline: 1.5px solid var(--ink); outline-offset: 2px; }
-#colors .swatch.none { background: linear-gradient(135deg, var(--d0) 45%, var(--outline) 46%, var(--outline) 54%, var(--d0) 55%); }
-#colors label { position: relative; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px dashed var(--ink-dim); font-size: 14px; color: var(--ink-dim); cursor: pointer; }
-#colors input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-
-@media (max-width: 640px) {
-  #dock { left: 1rem; right: 1rem; transform: none; width: auto; max-width: none; }
-  #tools .sep { display: none; }
-  #tools button { padding: 7px 9px; font-size: 12px; }
-  #hint .long { display: none; }
-  #tree { width: 100%; }
-}
-@media (prefers-reduced-motion: reduce) {
-  #menu-btn span { transition: none; }
+@media (max-width: 760px) {
+  .top { flex-wrap: wrap; left: 10px; right: 10px; top: 10px; gap: 8px; }
+  .brand { font-size: 20px; }
+  .search { order: 5; flex-basis: 100%; max-width: none; }
+  .right { margin-left: auto; }
+  .ibtn .lt { display: none; }
+  .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 56vh; transform: translateY(calc(100% + 30px)); }
+  .pop { top: 104px; right: 10px; width: calc(100% - 20px); }
+  .hint { bottom: 62px; font-size: 12px; }
+  .legend { display: none !important; }
 }
 </style>
 </head>
 <body>
-<svg id="canvas" class="has-dots" aria-label="Bubble-Fläche">
-  <defs id="defs"></defs>
+
+<svg id="stage" aria-label="Karte der Zuständigkeiten">
+  <defs>
+    <filter id="goo" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#888" stroke-width="1.4" />
+    </marker>
+    <marker id="arrowHot" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#111" stroke-width="1.4" />
+    </marker>
+  </defs>
   <g id="world">
-    <g id="fills"></g>
-    <g id="lines"></g>
-    <g id="overlay"></g>
+    <g id="gArea" filter="url(#goo)"></g>
+    <g id="gLink"></g>
+    <g id="gRole" filter="url(#goo)"></g>
+    <g id="gTop"></g>
   </g>
 </svg>
-<div id="labels"></div>
-<p id="measure" aria-hidden="true"></p>
 
-<header id="hud">
-  <h1 id="mark">Notizen</h1>
-  <button type="button" id="tree-btn" aria-expanded="false" aria-controls="tree">Struktur</button>
-  <p id="crumb"></p>
-</header>
-<aside id="tree" aria-label="Struktur" hidden></aside>
-<button type="button" id="theme-btn" aria-label="Hell oder dunkel"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle class="sun" cx="12" cy="12" r="4.2"/><g class="rays"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
-<button type="button" id="menu-btn" aria-label="Einstellungen" aria-expanded="false" aria-controls="panel"><span></span><span></span><span></span></button>
-<aside id="panel" aria-label="Einstellungen" hidden>
-  <h2>Einstellungen</h2>
-  <section class="tune-sec">
-    <h3>Ansicht</h3>
-    <div class="tune-choice" id="theme-choice" role="group" aria-label="Ansicht">
-      <button type="button" id="theme-light">Hell</button>
-      <button type="button" id="theme-dark">Dunkel</button>
-      <button type="button" id="theme-system">Wie System</button>
-    </div>
-  </section>
-  <section class="tune-sec">
-    <h3>Gespeichert</h3>
-    <div id="presets"></div>
-    <button type="button" id="preset-add" class="tune-add">+ Einstellungen speichern</button>
-  </section>
-  <div id="tune"></div>
-  <div class="tune-actions">
-    <button type="button" id="tune-reset">Auf Standard zurücksetzen</button>
+<div class="top">
+  <div class="brand">Notizen</div>
+  <div class="lenses pill" role="group" aria-label="Linse">
+    <button data-lens="kreise">Bereiche</button>
+    <button data-lens="menschen">Menschen</button>
+    <button data-lens="netz">Netz</button>
   </div>
-  <p class="version">Stand 07.10.2026, 13:40</p>
-</aside>
-
-<div id="dock">
-  <p id="hint"></p>
-  <div id="colors" class="bar" role="group" aria-label="Farbe der Bubble" hidden></div>
-  <div id="tools" class="bar" role="toolbar" aria-label="Werkzeuge">
-    <button type="button" id="btn-new">Neue Bubble</button>
-    <button type="button" id="btn-child" disabled>Unterbubble</button>
-    <button type="button" id="btn-group" disabled title="Alle Bubbles wählen, die an der gewählten angedockt sind, um sie zusammen zu verschieben">Gruppe</button>
-    <button type="button" id="btn-link" disabled title="Zwei mit Shift-Klick gewählte Bubbles verbinden, auch wenn sie in verschiedenen Bubbles liegen">Verbinden</button>
-    <button type="button" id="btn-del" disabled>Löschen</button>
-    <span class="sep" aria-hidden="true"></span>
-    <button type="button" id="btn-undo" disabled>Rückgängig</button>
-    <button type="button" id="btn-redo" disabled>Wiederholen</button>
-    <button type="button" id="btn-fit">Übersicht</button>
-    <button type="button" id="btn-export">Export</button>
-    <button type="button" id="btn-import">Import</button>
-    <input type="file" id="import-file" accept="application/json,.json" hidden />
+  <div class="search">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 9.5 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <input id="q" class="pill" type="search" placeholder="Wer ist zuständig für …?" autocomplete="off" />
+    <div id="results" class="results pill"></div>
+  </div>
+  <div class="right">
+    <button id="gapsBtn" class="ibtn pill" aria-pressed="false" title="Lücken und Überlast zeigen"><span class="lt">Lücken</span><span id="gapCount" class="badge">0</span></button>
+    <button id="addBtn" class="ibtn pill" title="Neu anlegen">+</button>
+    <button id="themeBtn" class="ibtn pill" title="Hell / Dunkel" aria-label="Hell / Dunkel"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8 A6.2 6.2 0 0 1 8 14.2 Z" fill="currentColor"/></svg></button>
+    <button id="menuBtn" class="ibtn pill" title="Einstellungen und Menü" aria-label="Einstellungen und Menü">☰</button>
   </div>
 </div>
 
+<div id="gapsPop" class="pop pill"></div>
+<div id="addPop" class="pop pill">
+  <button class="item" data-add="area">Neuer Bereich</button>
+  <button class="item" data-add="role">Neue Rolle</button>
+  <button class="item" data-add="person">Neue Person</button>
+</div>
+<div id="menuPop" class="pop pill">
+  <div id="settings"></div>
+  <hr />
+  <button class="item" data-m="fit">Alles zeigen</button>
+  <button class="item" data-m="export">Als Datei sichern (JSON)</button>
+  <button class="item" data-m="import">Datei laden …</button>
+  <button class="item" data-m="example">Beispiel-Firma laden</button>
+  <button class="item" data-m="clear">Leer beginnen</button>
+  <h4>Bedienung</h4>
+  <div class="ok">Doppelklick legt an: auf einen Bereich eine Rolle, auf eine Person eine Rolle für sie, auf die freie Fläche einen Bereich bzw. eine Person. Ziehen ordnet zu, Shift beim Loslassen teilt statt verschiebt. Entf löscht, Strg/Cmd+Z macht rückgängig, 1 2 3 wechselt die Linse, / sucht.</div>
+  <input id="file" type="file" accept="application/json,.json" hidden />
+</div>
+
+<aside id="panel" class="panel pill" aria-live="polite"></aside>
+
+<div class="corner">
+  <button id="undoBtn" class="ibtn pill" title="Rückgängig (Strg/Cmd+Z)">↶</button>
+  <button id="redoBtn" class="ibtn pill" title="Wiederholen (Strg/Cmd+Shift+Z)">↷</button>
+</div>
+<div id="hint" class="hint pill"></div>
+<div id="legend" class="legend pill"></div>
+
 <script>
-(() => {
-  "use strict";
+"use strict";
+const $ = (s) => document.querySelector(s);
+const svgNS = "http://www.w3.org/2000/svg";
+const KEY = "gefuege.v1";
+// Gespeichert wird die Pastell-Farbe; angezeigt wird die Farbe an derselben Stelle im gewählten Farbset
+const PALETTE = ["#f2b49c", "#a6c6ea", "#d4b0e0", "#a5d6b7", "#eed585", "#efa9c0", "#b4d4cc", "#e6bf96"];
+const SETS = {
+  frisch: { name: "Frisch", c: ["#ff8a73", "#5aa9ff", "#b07cff", "#3fcf9a", "#ffc94d", "#ff6fa8", "#3fc6d6", "#ff9f4a"] },
+  pastell: { name: "Pastell", c: PALETTE },
+  abend: { name: "Abend", c: ["#e76f51", "#457b9d", "#7b5ea7", "#2a9d8f", "#e9c46a", "#d1495b", "#4ea8de", "#f4a261"] },
+  mono: { name: "Mono", c: ["#d6d3cd", "#c2beb7", "#aeaaa3", "#e4e1db", "#ccc7bf", "#b9b4ac", "#a39e96", "#dcd8d1"] },
+};
+const DEFAULTS = { set: "frisch", blend: 20, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, gap: 14, font: "text", dots: true };
+let T = { ...DEFAULTS };
+try { Object.assign(T, JSON.parse(localStorage.getItem("notizen.look")) || {}); } catch (e) {}
+const col = (c) => { const i = PALETTE.indexOf(c); return i >= 0 ? (SETS[T.set] || SETS.frisch).c[i] : c; };
+const KINDS = {
+  liefert: { label: "liefert an", arrow: true, dash: null, w: 1.3 },
+  zusammen: { label: "arbeitet mit", arrow: false, dash: null, w: 2.4 },
+  unterstuetzt: { label: "unterstützt", arrow: true, dash: "5 5", w: 1.3 },
+};
+const HEAVY = 4; // ab so vielen Rollen gilt eine Person als ausgelastet
+const LENS_HINT = {
+  kreise: "Bereiche und ihre Rollen. Rolle in einen anderen Bereich ziehen verschiebt sie. Personen-Punkt auf eine Rolle ziehen überträgt die Aufgabe, mit Shift teilt ihr sie.",
+  menschen: "Wer trägt welche Rollen. Rolle auf eine Person ziehen überträgt sie, mit Shift teilt ihr sie. Auf die freie Fläche ziehen gibt sie ab.",
+  netz: "Wie die Rollen zusammenarbeiten. Rolle auf eine andere ziehen verbindet sie, die Art der Beziehung stellst du rechts ein.",
+};
 
-  const NS = "http://www.w3.org/2000/svg";
-  const STORE = "notizen-bubbles-v1";
-  const TUNE_STORE = "notizen-tune-v1";
+const uid = () => Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-3);
 
-  const $ = (id) => document.getElementById(id);
-  const svg = $("canvas");
-  const world = $("world");
-  const defs = $("defs");
-  const fillsG = $("fills");
-  const linesG = $("lines");
-  const overlay = $("overlay");
-  const labelsEl = $("labels");
-  const measurer = $("measure");
-  const hintEl = $("hint");
-  const crumbEl = $("crumb");
-  const colorsEl = $("colors");
-  const btn = {
-    new: $("btn-new"),
-    child: $("btn-child"),
-    del: $("btn-del"),
-    group: $("btn-group"),
-    link: $("btn-link"),
-    undo: $("btn-undo"),
-    redo: $("btn-redo"),
-    fit: $("btn-fit"),
-    export: $("btn-export"),
-    import: $("btn-import"),
-  };
-  const importFile = $("import-file");
-
-  // --- Settings (hamburger menu) ------------------------------------------------
-  // Base values chosen by Matthias (07.10.2026)
-  // What the menu offers; everything else follows from these (see derive)
-  const DEFAULTS = {
-    palette: "pastell", // pastell | kueste | mono
-    ink: "", // text colour, empty = automatic
-    family: "sans", // sans | serif | mono
-    weight: "kraeftig", // normal | kraeftig
-    font: 1, // text size
-    grow: 1, // how much bigger the text of bubbles with much inside gets
-    round: true, // round bubbles, or bubbles that take the shape of what lies inside
-    roundness: 0.35, // without round bubbles: 0 = hugs its content, 1 = nearly round again
-    merge: 0.42, // how readily bubbles melt together
-    flow: 0.4, // how far colours and grey tones run into each other
-    saturation: 1, // how strong the colours are
-    opacity: 1, // how solid the fill is
-    lineOn: true, // contour on or off
-    line: 4, // contour width
-    lineColor: "", // contour colour, empty = automatic
-    shade: 0, // 3D: light and shadow (0 = flat)
-    scale: 1, // size of empty bubbles
-    inner: 1, // room between a bubble's contour and what lies inside
-    spacing: 1, // distance between bubbles
-    pull: 1, // how strongly bubbles are drawn into the middle of the bubble they sit in
-    push: 1, // how firmly bubbles push each other away
-    glide: 0.34, // how far a bubble glides when let go
-    linkW: 0.45, // width of connections between bubbles
-    linkPull: 1, // how strongly connected bubbles lean towards each other
-    dots: true, // dotted background
-  };
-  // Values chosen by Matthias (07.10.2026) that stay fixed
-  const FIXED = { sharp: 60, textPad: 1 };
-  function derive(t) {
-    Object.assign(t, FIXED);
-    t.attract = 0.006 * t.pull;
-    t.repel = 0.13 * t.push;
-    t.gap = 2.1 * t.spacing;
-    t.pad = 3 * t.inner;
-    t.size = 1.05 * t.scale;
-    t.goo = 8 + 22 * t.merge;
-    t.blend = 0.5 + 90 * t.flow * t.flow;
-    t.outlineColor = t.lineColor;
-    t.threshold = 0.62 - 0.12 * t.merge;
-    t.outline = t.lineOn && t.line > 0;
-    t.outlineW = t.line;
-    t.friction = 0.55 + 0.35 * t.glide;
-    t.throw = 0.2 + 0.8 * t.glide;
-    return t;
-  }
-  const SPEC = [
-    ["Farben"],
-    ["palette", "Farbset", [["pastell", "Pastell"], ["kueste", "Küste"], ["mono", "Mono"]]],
-    ["flow", "Reichweite des Farbverlaufs", 0, 1, 0.01],
-    ["saturation", "Farbstärke", 0, 2, 0.05],
-    ["opacity", "Deckkraft der Füllung", 0.2, 1, 0.01],
-    ["ink", "Schriftfarbe"],
-    ["Schrift"],
-    ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
-    ["weight", "Stärke", [["normal", "Normal"], ["kraeftig", "Kräftig"]]],
-    ["font", "Schriftgröße", 0.7, 1.8, 0.05],
-    ["grow", "Größer, je mehr darin liegt", 0, 2, 0.05],
-    ["Form"],
-    ["round", "Runde Bubbles"],
-    ["roundness", "Rundung der freien Form", 0, 1, 0.01],
-    ["merge", "Verschmelzen", 0, 1, 0.01],
-    ["lineOn", "Kontur"],
-    ["line", "Konturstärke", 0.3, 10, 0.1],
-    ["lineColor", "Konturfarbe"],
-    ["shade", "Plastisch (3D)", 0, 1, 0.05],
-    ["scale", "Größe leerer Bubbles", 0.6, 1.8, 0.05],
-    ["inner", "Rand innen", 0.3, 2.5, 0.05],
-    ["Bewegung"],
-    ["spacing", "Abstand zwischen Bubbles", 0.3, 3, 0.05],
-    ["pull", "Anziehung zur Mitte", 0.2, 4, 0.05],
-    ["push", "Abstoßung", 0.2, 3, 0.05],
-    ["glide", "Gleiten nach dem Loslassen", 0, 1, 0.01],
-    ["Verbindungen"],
-    ["linkW", "Breite", 0.15, 1, 0.01],
-    ["linkPull", "Zug zueinander", 0, 4, 0.05],
-    ["Hintergrund"],
-    ["dots", "Punkte"],
+// ---------- Beispiel ----------
+function example() {
+  const A = [
+    ["leitung", "Leitung", 0, "Richtung geben und die Firma zusammenhalten"],
+    ["projekte", "Projekte", 1, "Kundenprojekte sicher ans Ziel bringen"],
+    ["gestaltung", "Gestaltung", 2, "Gute Arbeit, die man sieht"],
+    ["technik", "Technik", 3, "Alles, was läuft und laufen muss"],
+    ["finanzen", "Finanzen & Verwaltung", 4, "Geld, Papier und Ordnung"],
+    ["komm", "Kommunikation", 5, "Wie man uns draußen wahrnimmt"],
   ];
-  const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
-  // Saved settings, numbered by position: { list: [{ id, values }], def: id | null }
-  const PRESET_STORE = "notizen-presets-v1";
-  let presets = { list: [], def: null };
+  const P = ["Anna Keller", "Jonas Weber", "Mira Schmid", "Lukas Brandt", "Sofia Roth", "David Frey", "Lea Huber", "Tim Vogel"];
+  const pid = (n) => "p" + P.indexOf(n);
+  const R = [
+    ["gf", "leitung", "Geschäftsführung", "Die Firma gesund und auf Kurs halten", ["Strategie und Jahresziele festlegen", "Budget freigeben", "Verträge ab 10'000 unterschreiben"], ["Anna Keller"]],
+    ["personal", "leitung", "Personal", "Gute Leute finden und halten", ["Stellen ausschreiben", "Bewerbungsgespräche führen", "Onboarding neuer Mitarbeitender"], ["Anna Keller", "Lea Huber"]],
+    ["datenschutz", "leitung", "Datenschutz", "Daten von Kunden und Team schützen", ["Datenschutzanfragen beantworten", "Verarbeitungsverzeichnis führen"], ["Lea Huber"]],
+    ["pl", "projekte", "Projektleitung", "Projekte in Zeit und Budget liefern", ["Angebote schreiben", "Zeitplan und Budget im Projekt halten", "Ansprechperson für Kunden", "Rechnungen an Kunden auslösen"], ["Jonas Weber", "Mira Schmid"]],
+    ["kunden", "projekte", "Kundenpflege", "Kunden kommen gerne wieder", ["Bestandskunden betreuen", "Feedback nach Projektende einholen"], ["Jonas Weber"]],
+    ["ressourcen", "projekte", "Ressourcenplanung", "Die richtigen Leute zur richtigen Zeit", ["Auslastung planen", "Freelancer buchen"], []],
+    ["ad", "gestaltung", "Art Direction", "Gestalterische Qualität über alle Projekte", ["Gestalterische Qualität sichern", "Konzepte beim Kunden präsentieren"], ["Mira Schmid"]],
+    ["design", "gestaltung", "Design", "Entwürfe, die tragen", ["Entwürfe ausarbeiten", "Reinzeichnung und Druckdaten"], ["Sofia Roth", "Tim Vogel"]],
+    ["bildrechte", "gestaltung", "Bildrechte", "Nur verwenden, was wir dürfen", ["Lizenzen prüfen", "Bildarchiv pflegen"], []],
+    ["dev", "technik", "Entwicklung", "Websites und Apps umsetzen", ["Websites umsetzen", "Code-Reviews"], ["Lukas Brandt", "David Frey"]],
+    ["it", "technik", "IT & Geräte", "Alle können arbeiten", ["Laptops und Lizenzen verwalten", "Passwörter und Zugänge", "Backups"], ["David Frey"]],
+    ["hosting", "technik", "Hosting", "Kundenseiten laufen stabil", ["Server betreiben", "Updates einspielen"], ["Lukas Brandt"]],
+    ["buha", "finanzen", "Buchhaltung", "Zahlen stimmen, Rechnungen gehen raus", ["Rechnungen an Kunden auslösen", "Belege erfassen", "Löhne auszahlen"], ["Lea Huber"]],
+    ["controlling", "finanzen", "Controlling", "Wissen, wo wir stehen", ["Monatszahlen auswerten", "Liquidität planen"], ["Anna Keller"]],
+    ["buero", "finanzen", "Büro", "Ein Ort, an dem man gern arbeitet", ["Post und Telefon", "Büromaterial bestellen", "Schlüssel verwalten"], ["Lea Huber"]],
+    ["social", "komm", "Social Media", "Zeigen, woran wir arbeiten", ["Beiträge planen", "Community betreuen"], ["Tim Vogel"]],
+    ["web", "komm", "Website & Newsletter", "Unser Schaufenster", ["Newsletter versenden", "Referenzen pflegen"], ["Sofia Roth"]],
+    ["presse", "komm", "Presse", "Gut in den Medien vorkommen", ["Medienanfragen beantworten"], []],
+  ];
+  const L = [
+    ["design", "pl", "liefert"], ["pl", "buha", "liefert"], ["buha", "controlling", "liefert"], ["controlling", "gf", "liefert"],
+    ["dev", "design", "zusammen"], ["ad", "design", "unterstuetzt"], ["it", "dev", "unterstuetzt"], ["dev", "hosting", "liefert"],
+    ["kunden", "pl", "zusammen"], ["web", "social", "zusammen"], ["personal", "gf", "zusammen"], ["ressourcen", "pl", "liefert"],
+    ["design", "web", "liefert"], ["datenschutz", "it", "unterstuetzt"],
+  ];
+  return {
+    areas: A.map(([id, name, c, purpose]) => ({ id, name, color: PALETTE[c], purpose })),
+    people: P.map((name, i) => ({ id: "p" + i, name })),
+    roles: R.map(([id, area, name, purpose, acc, ppl]) => ({ id, area, name, purpose, acc, people: ppl.map(pid) })),
+    links: L.map(([from, to, kind]) => ({ id: uid(), from, to, kind })),
+  };
+}
+function emptyModel() {
+  return { areas: [{ id: uid(), name: "Erster Bereich", color: PALETTE[0], purpose: "" }], people: [], roles: [], links: [] };
+}
+
+// ---------- Zustand ----------
+let S = load() || example();
+let lens = readLS("gefuege.lens") || "kreise";
+if (!LENS_HINT[lens]) lens = "kreise";
+let sel = null; // {t: 'role'|'area'|'person', id}
+let query = "";
+let gapsOn = readLS("gefuege.gaps") === "1";
+const undoStack = [], redoStack = [];
+
+function readLS(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function writeLS(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load() {
   try {
-    const p = JSON.parse(localStorage.getItem(PRESET_STORE) || "null");
-    if (p && Array.isArray(p.list)) {
-      // Earlier entries were named 01, 02, …; they keep that as their id
-      const list = p.list.filter((x) => x && x.values).map((x) => ({ id: x.id || "c" + x.name, values: x.values }));
-      const ids = new Set(list.map((x) => x.id));
-      const def = p.def && !ids.has(p.def) && ids.has("c" + p.def) ? "c" + p.def : p.def;
-      presets = { list, def: ids.has(def) ? def : null };
-    }
-  } catch (e) {
-    /* none saved */
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.areas) && Array.isArray(s.roles)) { s.people ||= []; s.links ||= []; return s; }
+  } catch (e) {}
+  return null;
+}
+function save() { writeLS(KEY, JSON.stringify(S)); }
+const snap = () => JSON.stringify(S);
+function change(fn, opts = {}) {
+  const prev = snap();
+  fn();
+  if (snap() !== prev) { undoStack.push(prev); if (undoStack.length > 150) undoStack.shift(); redoStack.length = 0; }
+  afterChange(opts);
+}
+function afterChange(opts = {}) {
+  layoutVersion++;
+  clean();
+  save();
+  relayout(opts);
+  renderPanel();
+  updateGaps();
+  if (query) runSearch(false);
+}
+function clean() {
+  const aids = new Set(S.areas.map((a) => a.id)), pids = new Set(S.people.map((p) => p.id));
+  if (!S.areas.length) S.areas.push({ id: uid(), name: "Bereich", color: PALETTE[0], purpose: "" });
+  for (const r of S.roles) { if (!aids.has(r.area)) r.area = S.areas[0].id; r.people = [...new Set(r.people.filter((p) => pids.has(p)))]; }
+  const rids = new Set(S.roles.map((r) => r.id));
+  S.links = S.links.filter((l) => rids.has(l.from) && rids.has(l.to) && l.from !== l.to);
+  if (sel) {
+    const ok = sel.t === "role" ? rids.has(sel.id) : sel.t === "area" ? aids.has(sel.id) : pids.has(sel.id);
+    if (!ok) sel = null;
   }
-  const INK_OLD = { graphit: "", tinte: "#1f3a5f", sepia: "#5b3d28" };
-  const clean = (v) => {
-    const out = {};
-    for (const k in DEFAULTS) out[k] = v && k in v && typeof v[k] === typeof DEFAULTS[k] ? v[k] : DEFAULTS[k];
-    if (out.ink in INK_OLD) out.ink = INK_OLD[out.ink];
-    if (out.ink && !/^#[0-9a-f]{6}$/i.test(out.ink)) out.ink = "";
-    if (out.lineColor && !/^#[0-9a-f]{6}$/i.test(out.lineColor)) out.lineColor = "";
-    return derive(out);
-  };
-  // The base: the saved settings marked "Standard", else the built-in values
-  const base = () => clean(presets.list.find((x) => x.id === presets.def)?.values);
-  const T = base();
-  try {
-    const cur = JSON.parse(localStorage.getItem(TUNE_STORE) || "null");
-    if (cur) Object.assign(T, clean(cur));
-  } catch (e) {
-    /* base */
+}
+function doUndo() { if (!undoStack.length) return; redoStack.push(snap()); S = JSON.parse(undoStack.pop()); afterChange(); }
+function doRedo() { if (!redoStack.length) return; undoStack.push(snap()); S = JSON.parse(redoStack.pop()); afterChange(); }
+
+const role = (id) => S.roles.find((r) => r.id === id);
+const area = (id) => S.areas.find((a) => a.id === id);
+const person = (id) => S.people.find((p) => p.id === id);
+const rolesOf = (pid) => S.roles.filter((r) => r.people.includes(pid));
+const initials = (n) => n.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- Farben ----------
+let TC = {};
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n) => cs.getPropertyValue(n).trim();
+  TC = { d0: g("--d0"), bg: g("--bg"), outline: g("--outline"), ink: g("--ink"), dim: g("--ink-dim"), mark: g("--mark"), warn: g("--warn") };
+  TC.dark = lum(hex(TC.d0)) < 0.4;
+  buildFilter();
+  $("#arrow path").setAttribute("stroke", TC.dim);
+  $("#arrowHot path").setAttribute("stroke", TC.mark);
+}
+// Der Bubble-Look: Farben laufen weich ineinander, Formen verschmelzen wie Tropfen,
+// dazu auf Wunsch Schatten, Glanz und Kontur
+function buildFilter() {
+  const f = $("#goo");
+  f.innerHTML = "";
+  const el = (tag, a, p = f) => mk(tag, a, p);
+  el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: Math.max(0.01, T.blend), result: "cb0" });
+  el("feColorMatrix", { in: "cb0", type: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 60 0", result: "cb1" });
+  el("feColorMatrix", { in: "cb1", type: "saturate", values: T.sat.toFixed(2), result: "cb" });
+  el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: T.goo, result: "ab" });
+  el("feColorMatrix", { in: "ab", type: "matrix", values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 26 -11", result: "shape" });
+  el("feComposite", { in: "cb", in2: "shape", operator: "in", result: "body0" });
+  const ct = el("feComponentTransfer", { in: "body0", result: "body" });
+  el("feFuncA", { type: "linear", slope: T.opacity.toFixed(2) }, ct);
+  const layers = [];
+  if (T.shade > 0) {
+    el("feGaussianBlur", { in: "shape", stdDeviation: 5 + 9 * T.shade, result: "sh0" });
+    el("feOffset", { in: "sh0", dy: 3 + 7 * T.shade, result: "sh1" });
+    el("feColorMatrix", { in: "sh1", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${(0.12 + 0.16 * T.shade).toFixed(3)} 0`, result: "shadow" });
+    layers.push("shadow");
   }
-
-  // Per nesting depth (0 = main bubble)
-  const SIG_K = [1, 0.67, 0.55, 0.45]; // goo of the hairline, × T.goo
-  const MIN_R = [64, 36, 28, 24];
-  const PAD = [18, 12, 10, 9];
-  const dd = (d) => Math.min(d, 3);
-  const sig = (d) => T.goo * SIG_K[dd(d)];
-
-  // Bubble colour sets; switching set recolours bubbles slot by slot
-  const PALETTES = {
-    pastell: ["#f4d8c6", "#f3e5b1", "#d3e6cf", "#cfe0ef", "#e2d6f0", "#f1d0da", "#ddd6cb", "#b9d3d0"],
-    // Mint, sea blue, peach and sand (after the "Serene Coastline" and "Sunset Glow" moods)
-    kueste: ["#d1e8e2", "#a9d6e5", "#9cc5c9", "#6fa8b0", "#ffe8d6", "#ffcf8f", "#d9b39c", "#e9e4d8"],
-    // Warm greys, light to dark
-    mono: ["#f3f2ef", "#e7e5e0", "#dad7d1", "#cdc9c2", "#bfbab2", "#aea9a0", "#98938a", "#7d786f"],
-  };
-  // Earlier sets, so saved colours and settings move over slot by slot
-  const LEGACY = {
-    kraeftig: { to: "kueste", colors: ["#e8794f", "#e9b740", "#6fb37b", "#4f8fcf", "#9b7fd0", "#d9658a", "#a08d74", "#3fa3a0"] },
-    erdig: { to: "pastell", colors: ["#c98f6b", "#cbb27a", "#9aab7f", "#8fa6b2", "#a99ab3", "#c49a96", "#b5a894", "#7f9c94"] },
-    rose: { to: "pastell", colors: ["#f0dcd8", "#e1b8b1", "#c99089", "#dde6d5", "#a3b899", "#b7c9c7", "#a8c0d6", "#c7bbc9"] },
-  };
-  if (LEGACY[T.palette]) T.palette = LEGACY[T.palette].to;
-  const palette = () => PALETTES[T.palette] || PALETTES.pastell;
-  let themeDark = false;
-
-  const IDLE_HINT =
-    'Doppelklick: neue Bubble oder Text schreiben · Ziehen: verschieben · berühren dockt an · in eine Bubble ziehen legt hinein, herausziehen holt heraus<span class="long"> · Gruppe: alles Angedockte wählen · Shift-Klick: mehrere auswählen · zwei gewählt + Verbinden: über Grenzen hinweg verbinden · Entf: löschen</span>';
-
-  let bubbles = new Map();
-  let view = { x: 0, y: 0, k: 1 };
-  let selected = null; // the bubble the tools act on first
-  let sel = new Set(); // every selected bubble (Shift-click adds and removes)
-  let editing = null;
-  let drag = null;
-  let pan = null;
-  let pinch = null;
-  const pointers = new Map();
-  const undoStack = [];
-  const redoStack = [];
-  let dirty = true;
-  let needsSave = false;
-  let flashTimer = 0;
-  let seq = 0;
-
-  // --- Structure ------------------------------------------------------------
-  let kids = new Map();
-  let depthOf = new Map();
-  let nDesc = new Map(); // how many bubbles sit (directly or deeper) inside a bubble
-
-  // a is an ancestor of b
-  function isAncestor(a, b) {
-    const stack = [...b.parents];
-    const seen = new Set();
-    while (stack.length) {
-      const id = stack.pop();
-      if (id === a.id) return true;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const p = bubbles.get(id);
-      if (p) stack.push(...p.parents);
-    }
-    return false;
+  layers.push("body");
+  if (T.shade > 0) {
+    el("feGaussianBlur", { in: "shape", stdDeviation: 9, result: "hb" });
+    const sl = el("feSpecularLighting", { in: "hb", surfaceScale: 5, specularConstant: ((TC.dark ? 0.35 : 0.75) * T.shade).toFixed(2), specularExponent: 22, "lighting-color": "#ffffff", result: "spec0" });
+    el("feDistantLight", { azimuth: 235, elevation: 50 }, sl);
+    el("feComposite", { in: "spec0", in2: "shape", operator: "in", result: "spec" });
+    layers.push("spec");
   }
-
-  // A bubble that belongs to X and to something inside X only needs the inner one
-  function normalize() {
-    for (const b of bubbles.values()) {
-      if (b.parents.length < 2) continue;
-      b.parents = b.parents.filter((pid) => {
-        const p = bubbles.get(pid);
-        return !b.parents.some((qid) => qid !== pid && bubbles.has(qid) && isAncestor(p, bubbles.get(qid)));
-      });
-    }
+  if (T.outline) {
+    el("feMorphology", { id: "erode", in: "shape", operator: "erode", radius: 1, result: "e" });
+    el("feComposite", { in: "shape", in2: "e", operator: "out", result: "ring0" });
+    el("feFlood", { "flood-color": TC.outline, result: "oc" });
+    el("feComposite", { in: "oc", in2: "ring0", operator: "in", result: "ring" });
+    layers.push("ring");
   }
+  const m = el("feMerge", {});
+  for (const l of layers) el("feMergeNode", { in: l }, m);
+  setErode();
+}
+function setErode() {
+  const e = $("#erode"); if (!e) return;
+  const k = typeof d3 !== "undefined" && $("#stage") ? d3.zoomTransform($("#stage")).k : 1;
+  e.setAttribute("radius", Math.max(0.3, T.line / k).toFixed(2));
+}
+function hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+function lum([r, g, b]) { return (0.299 * r + 0.587 * g + 0.114 * b) / 255; }
+function mix(a, b, t) { const A = hex(a), B = hex(b); return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
+function tint(c, k) { return TC.dark ? mix(c, TC.d0, 0.18 + k * 0.62) : mix(c, TC.d0, k); }
+// Rollen eines Bereichs laufen leicht in die Nachbarfarbe hinüber, so entsteht ein Verlauf über den Bereich
+function roleColor(r) {
+  const a = area(r.area), base = col(a.color);
+  const mates = S.roles.filter((x) => x.area === r.area), i = mates.indexOf(r);
+  const set = (SETS[T.set] || SETS.frisch).c, j = PALETTE.indexOf(a.color);
+  const next = j >= 0 ? set[(j + 1) % set.length] : base;
+  return mates.length > 1 ? mix(base, next, (i / (mates.length - 1)) * 0.5) : base;
+}
 
-  function topo() {
-    normalize();
-    kids = new Map();
-    depthOf = new Map();
-    for (const b of bubbles.values()) kids.set(b.id, []);
-    for (const b of bubbles.values()) for (const p of b.parents) kids.get(p)?.push(b);
-    const dep = (b, guard) => {
-      if (depthOf.has(b.id)) return depthOf.get(b.id);
-      let d = 0;
-      for (const p of b.parents) {
-        const pb = bubbles.get(p);
-        if (pb && guard < 64) d = Math.max(d, dep(pb, guard + 1) + 1);
-      }
-      depthOf.set(b.id, d);
-      return d;
-    };
-    for (const b of bubbles.values()) dep(b, 0);
-    nDesc = new Map();
-    for (const b of bubbles.values()) nDesc.set(b.id, subtree(b).size - 1);
-    orderDirty = true;
+// ---------- Layout ----------
+// Jede Linse liefert Zielwerte für alle Elemente; dazwischen wird weich übergeblendet.
+// Schlüssel: a|bereich, h|rolle (Hof im Netz), r|rolle, p|person, la|lr|lp Beschriftungen, c|rolle|person Personen-Punkte, l|beziehung
+let cur = new Map();
+const seeds = { menschen: new Map(), netz: new Map() };
+const roleR = (r) => Math.min(50, 27 + 4.5 * r.acc.length);
+const personR = (p) => 40 + 7 * Math.min(8, rolesOf(p.id).length);
+
+function layout(which) {
+  const L = new Map();
+  if (which === "kreise") layoutKreise(L);
+  else if (which === "menschen") layoutMenschen(L);
+  else layoutNetz(L);
+  // was in dieser Linse nicht vorkommt, schrumpft an Ort und Stelle
+  const hide = (k, x, y) => { if (!L.has(k)) { const c = cur.get(k); L.set(k, { x: c ? c.x : x, y: c ? c.y : y, r: 0, o: 0, s: c ? c.s : 12 }); } };
+  for (const r of S.roles) {
+    const p = L.get("r|" + r.id);
+    hide("h|" + r.id, p.x, p.y);
+    for (const pid of r.people) hide(`c|${r.id}|${pid}`, p.x, p.y);
   }
+  for (const a of S.areas) hide("a|" + a.id, 0, 0), hide("la|" + a.id, 0, 0);
+  for (const p of S.people) hide("p|" + p.id, 0, 0), hide("lp|" + p.id, 0, 0);
+  for (const l of S.links) if (!L.has("l|" + l.id)) L.set("l|" + l.id, { o: 0 });
+  return L;
+}
 
-  function subtree(b) {
-    const out = new Set([b]);
-    const stack = [b];
-    while (stack.length) {
-      const x = stack.pop();
-      for (const c of kids.get(x.id) || []) {
-        if (!out.has(c)) {
-          out.add(c);
-          stack.push(c);
-        }
-      }
-    }
-    return out;
+function roleLabel(L, r, x, y, rad, withChips) {
+  const s = Math.max(10.5, Math.min(15, rad * 0.27));
+  L.set("lr|" + r.id, { x, y: y - (withChips && r.people.length ? rad * 0.16 : 0), r: rad, o: 1, s });
+  if (withChips) {
+    const n = r.people.length, step = 21, cy = y + Math.min(rad * 0.52, rad - 12);
+    r.people.forEach((pid, i) => L.set(`c|${r.id}|${pid}`, { x: x + (i - (n - 1) / 2) * step, y: cy, r: 9.5, o: 1 }));
   }
+}
 
-  // A bubble and everything that belongs only to it
-  function ownTree(b, out = new Set()) {
-    if (out.has(b)) return out;
-    out.add(b);
-    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) ownTree(c, out);
-    return out;
-  }
-
-  // The outermost bubble that carries b around (b itself for main and shared bubbles)
-  function anchor(b) {
-    let a = b;
-    const seen = new Set();
-    while (a.parents.length === 1 && !seen.has(a)) {
-      seen.add(a);
-      const p = bubbles.get(a.parents[0]);
-      if (!p) break;
-      a = p;
-    }
-    return a;
-  }
-
-  function moveTree(b, dx, dy, seen = new Set()) {
-    if (seen.has(b)) return;
-    seen.add(b);
-    b.x += dx;
-    b.y += dy;
-    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) moveTree(c, dx, dy, seen);
-  }
-
-  function uid() {
-    return "b" + Date.now().toString(36) + (seq++).toString(36);
-  }
-
-  // The circles a bubble is drawn from: one, or (free form) one halo per child plus the label
-  const circlesOf = (b) => (b._shape && b._shape.length ? b._shape : [[b.x, b.y, b.r]]);
-  // The two circles of a and b that come closest: [gap, circle of a, circle of b]
-  function nearest(a, b) {
-    let best = [Infinity, null, null];
-    for (const p of circlesOf(a))
-      for (const q of circlesOf(b)) {
-        const g = Math.hypot(q[0] - p[0], q[1] - p[1]) - p[2] - q[2];
-        if (g < best[0]) best = [g, p, q];
-      }
-    return best;
-  }
-  function insideShape(b, pt) {
-    return circlesOf(b).some(([x, y, r]) => Math.hypot(pt.x - x, pt.y - y) <= r);
-  }
-  // Docking: bubbles on the same level that were pushed together stay merged.
-  // k = wanted distance as a share of the two radii (below 1 = overlapping)
-  const sameLevel = (a, b) => (a.parents[0] || null) === (b.parents[0] || null);
-  function dockPair(a, b, k) {
-    a.docks[b.id] = k;
-    b.docks[a.id] = k;
-  }
-  function undockAll(b) {
-    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
-    b.docks = {};
-  }
-  // The touching neighbours a bubble would dock to if let go here
-  function dockTargets(b, skip, pid = b.parents[0] || null) {
-    const out = [];
-    for (const o of bubbles.values()) {
-      if (o === b || (skip && skip.has(o)) || (o.parents[0] || null) !== pid) continue;
-      const [gap, p, q] = nearest(b, o);
-      if (gap < Math.max(6, sig(depthOf.get(b.id) || 0) * 0.5)) {
-        const dist = Math.hypot(q[0] - p[0], q[1] - p[1]);
-        out.push({ o, k: Math.max(0.7, Math.min(1, dist / (p[2] + q[2]))) });
-      }
-    }
-    return out;
-  }
-  // Everything docked to b, directly or through others
-  function dockGroup(b) {
-    const out = new Set([b]);
-    const stack = [b];
-    while (stack.length) {
-      const x = stack.pop();
-      for (const id in x.docks) {
-        const o = bubbles.get(id);
-        if (o && !out.has(o)) {
-          out.add(o);
-          stack.push(o);
-        }
-      }
-    }
-    return out;
-  }
-  function make(text, x, y, parents = [], color = null) {
-    const b = { id: uid(), text, x, y, parents: [...parents], color, docks: {}, links: {}, r: 0, vx: 0, vy: 0 };
-    bubbles.set(b.id, b);
-    topo();
-    b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
-    return b;
-  }
-
-  function remove(b) {
-    for (const c of kids.get(b.id) || []) {
-      c.parents = c.parents.filter((p) => p !== b.id);
-      if (!c.parents.length) c.parents = [...b.parents];
-    }
-    for (const id in b.docks) delete bubbles.get(id)?.docks[b.id];
-    for (const id in b.links) delete bubbles.get(id)?.links[b.id];
-    bubbles.delete(b.id);
-    sel.delete(b);
-    if (selected === b) selected = [...sel].pop() || null;
-    if (editing === b) editing = null;
-    topo();
-    needsSave = true;
-    dirty = true;
-  }
-
-  function name(b) {
-    const t = (b.text || "").split("\n")[0].trim();
-    if (!t) return "Notiz";
-    return t.length > 26 ? t.slice(0, 25) + "…" : t;
-  }
-
-  // --- Text measuring ---------------------------------------------------------
-  const mcache = new Map();
-  // Type grows with what a bubble holds: a leaf reads small, a bubble with
-  // many notes inside reads like a headline.
-  function typeOf(b) {
-    const n = nDesc.get(b.id) || 0;
-    const d = depthOf.get(b.id) || 0;
-    const px = Math.min(46, (15 + (d === 0 ? 2 : 0)) * T.font * (1 + T.grow * 0.28 * Math.log2(1 + n)));
-    const strong = T.weight === "kraeftig";
-    let wt = n ? (strong ? 700 : 600) : strong ? 500 : 400;
-    if (T.family === "mono") wt = Math.min(wt, 500);
-    return { px: Math.round(px * 2) / 2, wt };
-  }
-  // Air between text and contour
-  const marginOf = (px) => (0.6 * px + 8 + (T.outline ? T.outlineW * 0.6 : 0)) * T.textPad;
-  const range = document.createRange();
-  function measure(text, ty, w) {
-    const key = ty.px + "|" + ty.wt + "|" + w + "|" + text;
-    let m = mcache.get(key);
-    if (m === undefined) {
-      measurer.style.fontSize = ty.px + "px";
-      measurer.style.fontWeight = ty.wt;
-      measurer.style.width = w + "px";
-      measurer.textContent = text || "Notiz";
-      // Widest line actually used, so short lines do not reserve room
-      range.selectNodeContents(measurer);
-      let tw = 0;
-      for (const r of range.getClientRects()) tw = Math.max(tw, r.width);
-      m = { h: measurer.offsetHeight, tw: Math.min(w, Math.ceil(tw)), fits: measurer.scrollWidth <= w + 1 };
-      mcache.set(key, m);
-    }
-    return m;
-  }
-  // Smallest circle that holds the text of a bubble without children, with air all round
-  function leafSize(text, ty, minR) {
-    const mg = marginOf(ty.px);
-    const key = "L" + ty.px + "|" + ty.wt + "|" + mg + "|" + minR + "|" + text;
-    let s = mcache.get(key);
-    if (!s) {
-      let best = null;
-      for (let r = Math.round(minR); r < 700 && !best; r += 3) {
-        for (const f of [1.6, 1.4, 1.25, 1.1]) {
-          const w = Math.round((r - mg) * f);
-          if (w < ty.px * 2) continue;
-          const m = measure(text, ty, w);
-          if (m.fits && Math.hypot(m.tw / 2, m.h / 2) <= r - mg) {
-            best = { r, w: w + 2, h: m.h };
-            break;
-          }
-        }
-      }
-      s = best || { r: 700, w: 600, h: measure(text, ty, 600).h };
-      mcache.set(key, s);
-    }
-    return s;
-  }
-  function parentLabel(text, ty) {
-    const w = Math.round(ty.px * 10);
-    const m = measure(text, ty, w);
-    return { w, h: m.h, tw: m.tw, mg: marginOf(ty.px) };
-  }
-  // Distance from the top of the circle to the top of the label, so the
-  // widest line clears the contour by the margin
-  function labelTop(r, L) {
-    const half = L.tw / 2 + L.mg;
-    return Math.max(L.mg * 0.8, r - Math.sqrt(Math.max(0, r * r - half * half)) + L.mg * 0.35);
-  }
-
-  // --- Physics ------------------------------------------------------------------
-  // Forces change speed; friction lets everything come to a real stop.
-  // Every force acts on a pair (or pulls a child inside its own bubble),
-  // so nothing can push the whole picture across the screen.
-  function step() {
-    const moving = drag && drag.moved ? new Set(drag.group) : null;
-    const pinned = moving ? new Set() : null;
-    if (moving) for (const g of moving) ownTree(g, pinned);
-    const isPinned = (b) => pinned !== null && pinned.has(b);
-    const all = [...bubbles.values()];
-    for (const b of all) {
-      b._fx = 0;
-      b._fy = 0;
-    }
-    const force = (b, fx, fy) => {
-      if (!isFinite(fx) || !isFinite(fy)) return;
-      b._fx += fx;
-      b._fy += fy;
-    };
-
-    for (const b of all) {
-      const d = depthOf.get(b.id);
-      b._own = (kids.get(b.id) || []).filter((c) => c.parents.length === 1 && !(moving && moving.has(c)));
-      b._type = typeOf(b);
-      if (b._own.length) {
-        b._label = parentLabel(b.text, b._type);
-        b._lt = labelTop(b.r, b._label);
-        b._off = (b._lt + b._label.h + b._label.mg * 0.6 - PAD[dd(d)] * T.pad) / 2;
-      } else {
-        b._label = leafSize(b.text, b._type, MIN_R[dd(d)] * T.size);
-      }
-      b._linked = null;
-    }
-
-    // Docked bubbles: a spring holds each pair at the distance they were docked at
-    for (const a of all) {
-      for (const id in a.docks) {
-        if (id < a.id) continue;
-        const c = bubbles.get(id);
-        if (!c) continue;
-        (a._linked ||= new Set()).add(c);
-        (c._linked ||= new Set()).add(a);
-        if (isPinned(a) || isPinned(c)) continue;
-        const [, p, q] = nearest(a, c);
-        const dx = q[0] - p[0];
-        const dy = q[1] - p[1];
-        const dist = Math.hypot(dx, dy) || 1;
-        const want = a.docks[id] * (p[2] + q[2]);
-        const f = Math.max(-6, Math.min(6, (dist - want) * 0.06));
-        force(a, (dx / dist) * f, (dy / dist) * f);
-        force(c, (-dx / dist) * f, (-dy / dist) * f);
-      }
-    }
-
-    // Connected bubbles lean towards each other, gently, across their bubbles' walls
-    for (const a of all) {
-      for (const id in a.links) {
-        if (id < a.id) continue;
-        const c = bubbles.get(id);
-        if (!c || isPinned(a) || isPinned(c)) continue;
-        const dx = c.x - a.x;
-        const dy = c.y - a.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const f = Math.min(2, Math.max(0, dist - a.r - c.r) * 0.0015 * T.linkPull);
-        force(a, (dx / dist) * f, (dy / dist) * f);
-        force(c, (-dx / dist) * f, (-dy / dist) * f);
-      }
-    }
-
-    const repel = (list, gap) => {
-      for (let i = 0; i < list.length; i++) {
-        for (let j = i + 1; j < list.length; j++) {
-          const a = list[i];
-          const c = list[j];
-          if (isPinned(a) || isPinned(c)) continue;
-          if (a._linked && a._linked.has(c)) continue;
-          let dx = c.x - a.x;
-          let dy = c.y - a.y;
-          let dist = Math.hypot(dx, dy);
-          const min = a.r + c.r + gap;
-          if (dist >= min) continue;
-          if (dist < 0.01) {
-            dx = 1;
-            dy = 0.5;
-            dist = Math.hypot(dx, dy);
-          }
-          const f = Math.min(8, (min - dist) * T.repel) / dist;
-          force(a, -dx * f, -dy * f);
-          force(c, dx * f, dy * f);
-        }
-      }
-    };
-
-    for (const b of all) {
-      b._shape = null;
-      if (!b._own.length) continue;
-      const d = depthOf.get(b.id);
-      if (!T.round) {
-        // Free form: the bubble is the skin around its children, the label sits on top
-        const gap = sig(d + 1) * 3 * T.gap;
-        for (const c of b._own) force(c, (b.x - c.x) * T.attract * 0.35, (b.y - c.y) * T.attract * 0.35);
-        repel(b._own, gap);
-        const pad = PAD[dd(d)] * T.pad + gap / 2;
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        const shape = [];
-        for (const c of b._own) {
-          const r = c.r + pad;
-          shape.push([c.x, c.y, r]);
-          x0 = Math.min(x0, c.x - r);
-          x1 = Math.max(x1, c.x + r);
-          y0 = Math.min(y0, c.y - r);
-          y1 = Math.max(y1, c.y + r);
-        }
-        // Label row: a few circles over the top of the children
-        const L = b._label;
-        const cx = (x0 + x1) / 2;
-        const rl = L.h / 2 + L.mg;
-        const ly = y0 + pad * 0.6 - L.h / 2;
-        const half = Math.max(0, L.tw / 2);
-        const n = Math.max(1, Math.ceil((2 * half) / rl));
-        for (let i = 0; i <= n; i++) shape.push([cx - half + (2 * half * i) / n, ly, rl]);
-        // A spine from the label down into the middle, so the skin stays one piece
-        const my = (y0 + y1) / 2;
-        // Rundung: a round core under the content, from nothing up to almost the whole shape
-        if (T.roundness > 0.01) {
-          const reach = Math.max(x1 - cx, y1 - my, cx - x0, my - (ly - rl));
-          shape.push([cx, (my + ly) / 2 + (my - ly) * 0.25, reach * T.roundness]);
-        }
-        for (let y = ly + rl; y < my; y += rl) shape.push([cx, y, rl * 0.8]);
-        b._shape = shape;
-        b._labTop = ly - L.h / 2;
-        // The bubble's own point follows the centroid of its children, so their pull
-        // towards it cancels out and the group does not creep
-        if (!isPinned(b)) {
-          let sx = 0, sy = 0;
-          for (const c of b._own) {
-            sx += c.x;
-            sy += c.y;
-          }
-          b.x += (sx / b._own.length - b.x) * 0.5;
-          b.y += (sy / b._own.length - b.y) * 0.5;
-        }
-        continue;
-      }
-      const tx = b.x;
-      const ty = b.y + b._off;
-      for (const c of b._own) force(c, (tx - c.x) * T.attract, (ty - c.y) * T.attract);
-      repel(b._own, sig(d + 1) * 3 * T.gap);
-      // Keep children off the label
-      const L = b._label;
-      const x0 = b.x - L.tw / 2 - L.mg * 0.5;
-      const x1 = b.x + L.tw / 2 + L.mg * 0.5;
-      const y0 = b.y - b.r + b._lt - L.mg * 0.5;
-      const y1 = b.y - b.r + b._lt + L.h + L.mg * 0.5;
-      for (const c of b._own) {
-        const qx = Math.max(x0, Math.min(x1, c.x));
-        const qy = Math.max(y0, Math.min(y1, c.y));
-        let dx = c.x - qx;
-        let dy = c.y - qy;
-        let dist = Math.hypot(dx, dy);
-        const need = c.r + 4;
-        if (dist >= need) continue;
-        if (dist < 0.01) {
-          dx = 0;
-          dy = 1;
-          dist = 1;
-        }
-        const f = Math.min(10, (need - dist) * 0.35) / dist;
-        force(c, dx * f, dy * f);
-      }
-    }
-    repel(all.filter((b) => !b.parents.length), sig(0) * 2.6 * T.gap);
-
-    // Integrate: speed with friction, then a firm stop when it gets tiny
-    let energy = 0;
-    for (const b of all) {
-      if (isPinned(b)) {
-        b.vx = 0;
-        b.vy = 0;
-        continue;
-      }
-      b.vx = (b.vx + b._fx) * T.friction;
-      b.vy = (b.vy + b._fy) * T.friction;
-      const sp = Math.hypot(b.vx, b.vy);
-      if (sp > 40) {
-        b.vx *= 40 / sp;
-        b.vy *= 40 / sp;
-      }
-      if (sp < 0.03 && Math.hypot(b._fx, b._fy) < 0.03) {
-        b.vx = 0;
-        b.vy = 0;
-      }
-    }
-    for (const b of all) {
-      if (b.vx || b.vy) {
-        moveTree(b, b.vx, b.vy);
-        energy += Math.abs(b.vx) + Math.abs(b.vy);
-      }
-    }
-
-    // Radii, innermost first: a bubble wraps its own children and its label
-    const order = all.slice().sort((a, b) => depthOf.get(b.id) - depthOf.get(a.id));
-    for (const b of order) {
-      const d = dd(depthOf.get(b.id));
-      let target;
-      if (b._shape) {
-        target = 0;
-        for (const [x, y, r] of b._shape) target = Math.max(target, Math.hypot(x - b.x, y - b.y) + r);
-        b.r = target;
-        continue;
-      } else if (b._own.length) {
-        const L = b._label;
-        const half = L.tw / 2 + L.mg;
-        target = Math.max(MIN_R[d] * T.size * 1.2, half * 1.22, (L.h + 2 * L.mg) * 1.25);
-        for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d] * T.pad);
-      } else {
-        target = b._label.r;
-      }
-      const dr = (target - b.r) * 0.25;
-      if (Math.abs(dr) > 0.01) {
-        b.r += dr;
-        energy += Math.abs(dr);
-      } else {
-        b.r = target;
-      }
-    }
-    return energy;
-  }
-
-  // --- Rendering ---------------------------------------------------------------
-  function el(tag, attrs, parent) {
-    const n = document.createElementNS(NS, tag);
-    for (const k in attrs) n.setAttribute(k, attrs[k]);
-    if (parent) parent.appendChild(n);
-    return n;
-  }
-  function cssColor(name, fallback) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  }
-
-  // Fill: colours blur into each other (nested and shared bubbles flow
-  // into one another), cut out by the melted shape of everything.
-  // Lines: one hairline per depth along its melted contour (website grid recipe).
-  function buildFilters() {
-    defs.textContent = "";
-    const th = T.threshold;
-    const S = T.sharp;
-    const alpha = (k, t) => `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${k} ${(-(k * t - 0.5)).toFixed(3)}`;
-    const base = cssColor("--d0", "#ffffff");
-
-    const f = el("filter", { id: "fill", x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
-    // Colours run into each other: blur them, then make the blur opaque again so a
-    // neighbour's colour reaches across instead of fading to white
-    el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: Math.max(0.01, T.blend), result: "cb0" }, f);
-    el("feColorMatrix", { in: "cb0", type: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 60 0", result: "cb1" }, f);
-    el("feColorMatrix", { in: "cb1", type: "saturate", values: T.saturation.toFixed(2), result: "cb" }, f);
-    el("feFlood", { "flood-color": base, result: "base" }, f);
-    el("feComposite", { in: "cb", in2: "base", operator: "over", result: "col0" }, f);
-    const ct = el("feComponentTransfer", { in: "col0", result: "col" }, f);
-    el("feFuncA", { type: "linear", slope: T.opacity.toFixed(2) }, ct);
-    el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: sig(0), result: "ab" }, f);
-    el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, f);
-    el("feComposite", { in: "col", in2: "shape", operator: "in", result: "body" }, f);
-    // 3D: a soft shadow under everything
-    if (T.shade > 0) el("feDropShadow", { in: "body", dx: 0, dy: 6 * T.shade + 2, stdDeviation: 6 + 8 * T.shade, "flood-color": "#000", "flood-opacity": (0.1 + 0.16 * T.shade).toFixed(3) }, f);
-
-    const line = T.outlineColor || cssColor("--outline", "#595959");
-    for (let d = 0; d < 4; d++) {
-      const s = sig(d);
-      const g = el("filter", { id: "line" + d, x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
-      el("feGaussianBlur", { in: "SourceAlpha", stdDeviation: s, result: "ab" }, g);
-      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(S, th), result: "shape" }, g);
-      const edge = th + 0.5 / S + T.outlineW / (s * 2.5066);
-      el("feColorMatrix", { in: "ab", type: "matrix", values: alpha(40, edge), result: "inner" }, g);
-      el("feFlood", { "flood-color": line, result: "ink" }, g);
-      el("feComposite", { in: "ink", in2: "shape", operator: "in", result: "tint" }, g);
-      el("feComposite", { in: "tint", in2: "inner", operator: "out", result: "ring" }, g);
-      const layers = [];
-      if (T.shade > 0) {
-        // 3D: the blurred edge works as a height map; light from top left
-        const k = T.shade;
-        const scale = (2 + 4 * k).toFixed(2);
-        const lo = el("feDiffuseLighting", { in: "ab", surfaceScale: scale, diffuseConstant: 1, "lighting-color": "#ffffff", result: "diff" }, g);
-        el("feDistantLight", { azimuth: 225, elevation: 48 }, lo);
-        // Dark where the surface turns away from the light
-        el("feColorMatrix", { in: "diff", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ${(-0.55 * k).toFixed(3)} 0 0 0 ${(0.55 * k * 0.92).toFixed(3)}`, result: "dark" }, g);
-        el("feComposite", { in: "dark", in2: "shape", operator: "in", result: "shadow" }, g);
-        const hi = el("feSpecularLighting", { in: "ab", surfaceScale: scale, specularConstant: (0.7 * k).toFixed(3), specularExponent: 16, "lighting-color": "#ffffff", result: "spec" }, g);
-        el("feDistantLight", { azimuth: 225, elevation: 40 }, hi);
-        el("feComposite", { in: "spec", in2: "shape", operator: "in", result: "light" }, g);
-        layers.push("shadow", "light");
-      }
-      if (T.outline) layers.push("ring");
-      if (layers.length) {
-        const mg = el("feMerge", {}, g);
-        for (const r of layers) el("feMergeNode", { in: r }, mg);
-      } else el("feFlood", { "flood-opacity": 0 }, g);
-    }
-    svg.classList.toggle("has-dots", !!T.dots);
-    document.documentElement.style.setProperty("--fs", T.font);
-    themeDark = luminance(toHex(cssColor("--bg", "#ffffff"))) < 0.5;
-    // One chosen colour for text on light grounds, a pale tint of it on dark ones
-    const mix = (hex, to, k) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(hex.substr(i, 2), 16) * (1 - k) + to * k).toString(16).padStart(2, "0")).join("");
-    document.documentElement.style.setProperty("--ink-l", T.ink || "rgba(44, 40, 36, 0.86)");
-    document.documentElement.style.setProperty("--ink-d", T.ink ? mix(T.ink, 255, 0.82) : "rgba(250, 247, 242, 0.92)");
-    document.documentElement.style.setProperty("--label-font", FAMILIES[T.family] || FAMILIES.sans);
-    dirty = true;
-  }
-
-  // Fill layer: one group per depth (bridges under the bubbles of that depth)
-  // Line layer: one filtered group per depth
-  const fillLayers = [];
-  const lineLayers = [];
-  function fillLayer(d) {
-    while (fillLayers.length <= d) {
-      const g = el("g", {}, fillsG);
-      fillLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
-    }
-    return fillLayers[d];
-  }
-  function lineLayer(d) {
-    while (lineLayers.length <= d) {
-      const i = lineLayers.length;
-      const g = el("g", { filter: `url(#line${dd(i)})` }, linesG);
-      lineLayers.push({ bridges: el("g", {}, g), bodies: el("g", {}, g) });
-    }
-    return lineLayers[d];
-  }
-  fillsG.setAttribute("filter", "url(#fill)");
-
-  const fillEls = new Map();
-  const lineEls = new Map();
-  const labels = new Map();
-  let orderDirty = true;
-  const selRings = [];
-  const dropRing = el("circle", { fill: "var(--ink)", "fill-opacity": "0.04", stroke: "var(--ink)", "stroke-dasharray": "4 5" }, overlay);
-
-  function luminance(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
-  }
-  // Uncoloured bubbles take the colour of the bubble they sit in
-  function colorOf(b) {
-    const seen = new Set();
-    for (let x = b; x && !seen.has(x); x = bubbles.get(x.parents[0])) {
-      if (x.color) return x.color;
-      seen.add(x);
-    }
-    return null;
-  }
-  const fillOf = (b) => colorOf(b) || `var(--d${dd(depthOf.get(b.id))})`;
-  // Blend two fills; theme colours (CSS variables) switch over halfway
-  function mixFill(a, b, u) {
-    if (!HEX.test(a) || !HEX.test(b)) return u < 0.5 ? a : b;
-    return "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.substr(i, 2), 16) * (1 - u) + parseInt(b.substr(i, 2), 16) * u).toString(16).padStart(2, "0")).join("");
-  }
-
-  function render() {
-    world.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.k.toFixed(4)})`);
-    labelsEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
-    const gs = 24 * view.k;
-    svg.style.backgroundSize = `${gs}px ${gs}px`;
-    svg.style.backgroundPosition = `${view.x}px ${view.y}px`;
-
-    for (const L of fillLayers) L.bridges.textContent = "";
-    for (const L of lineLayers) L.bridges.textContent = "";
-    for (const m of [fillEls, lineEls, labels]) {
-      for (const [id, n] of m) if (!bubbles.has(id)) { n.remove(); m.delete(id); }
-    }
-
-    for (const b of bubbles.values()) {
-      const d = depthOf.get(b.id);
-      let fc = fillEls.get(b.id);
-      let lc = lineEls.get(b.id);
-      if (!fc) {
-        fc = el("circle", {});
-        lc = el("circle", {});
-        fillEls.set(b.id, fc);
-        lineEls.set(b.id, lc);
-      }
-      if (orderDirty || fc.parentNode !== fillLayer(d).bodies) fillLayer(d).bodies.appendChild(fc);
-      if (orderDirty || lc.parentNode !== lineLayer(d).bodies) lineLayer(d).bodies.appendChild(lc);
-      const cx = b.x.toFixed(1);
-      const cy = b.y.toFixed(1);
-      const r = b._shape ? "0" : Math.max(1, b.r).toFixed(1);
-      for (const c of [fc, lc]) {
-        c.setAttribute("cx", cx);
-        c.setAttribute("cy", cy);
-        c.setAttribute("r", r);
-      }
-      fc.style.fill = fillOf(b);
-      if (b._shape) {
-        const fill = fillOf(b);
-        for (const [x, y, rr] of b._shape) {
-          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d).bridges);
-          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d).bridges);
-        }
-      }
-
-      // Connections: a tapered neck from this bubble to each connected one, its
-      // colour running from one to the other
-      for (const id in b.links) {
-        const o = bubbles.get(id);
-        if (!o || id < b.id) continue;
-        const d2 = Math.max(d, depthOf.get(id));
-        const ca = fillOf(b);
-        const cb = fillOf(o);
-        const [, pa, pb] = nearest(b, o);
-        const dx = pb[0] - pa[0];
-        const dy = pb[1] - pa[1];
-        const len = Math.hypot(dx, dy);
-        const w = Math.min(pa[2], pb[2]) * T.linkW;
-        const ax = pa[0] + (dx / (len || 1)) * -pa[2] * 0.5;
-        const ay = pa[1] + (dy / (len || 1)) * -pa[2] * 0.5;
-        const full = len + (pa[2] + pb[2]) * 0.5;
-        const stepLen = Math.max(4, w * 0.6);
-        for (let s2 = 0; s2 <= full; s2 += stepLen) {
-          const u = s2 / Math.max(1, full);
-          const rr = w * (0.7 + 0.3 * Math.abs(1 - 2 * u));
-          const x = ax + (dx / (len || 1)) * s2;
-          const y = ay + (dy / (len || 1)) * s2;
-          const fill = mixFill(ca, cb, u);
-          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, fillLayer(d2).bridges);
-          el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: rr.toFixed(1) }, lineLayer(d2).bridges);
-        }
-      }
-
-      let lab = labels.get(b.id);
-      if (!lab) {
-        lab = document.createElement("div");
-        lab.className = "label";
-        lab.spellcheck = false;
-        lab.addEventListener("input", () => onInput(b, lab));
-        lab.addEventListener("keydown", (e) => onLabelKey(e, lab));
-        lab.addEventListener("blur", () => finishEdit(b));
-        lab.addEventListener("paste", onPaste);
-        labelsEl.appendChild(lab);
-        labels.set(b.id, lab);
-      }
-      const isEditing = editing === b;
-      if (!isEditing && lab.textContent !== b.text) lab.textContent = b.text;
-      const col = colorOf(b);
-      const tone = (col ? luminance(col) > 0.5 : !themeDark) ? " on-light" : " on-dark";
-      lab.className = `label d${dd(d)}${tone}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
-      const ty = b._type || typeOf(b);
-      const S = b._label || leafSize(b.text, ty, MIN_R[dd(d)] * T.size);
-      const isParent = b._own && b._own.length;
-      const left = b.x - S.w / 2;
-      const top = b._shape ? b._labTop : isParent ? b.y - b.r + labelTop(b.r, S) : b.y - S.h / 2;
-      lab.style.width = S.w + "px";
-      lab.style.fontSize = ty.px + "px";
-      lab.style.fontWeight = ty.wt;
-      lab.style.zIndex = String(d + 1);
-      lab.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
-    }
-    orderDirty = false;
-
-    const sw = 1.2 / view.k;
-    const ringFor = [...sel].filter((b) => bubbles.has(b.id));
-    while (selRings.length < ringFor.length) selRings.push(el("circle", { fill: "none", stroke: "var(--ink)", "stroke-opacity": "0.55" }, overlay));
-    selRings.forEach((ring, i) => {
-      const b = ringFor[i];
-      if (!b) {
-        ring.style.display = "none";
-        return;
-      }
-      ring.setAttribute("cx", b.x);
-      ring.setAttribute("cy", b.y);
-      ring.setAttribute("r", b.r + 7);
-      ring.setAttribute("stroke-width", sw);
-      ring.setAttribute("stroke-dasharray", b === selected || ringFor.length === 1 ? "" : `${4 / view.k} ${4 / view.k}`);
-      ring.style.display = "";
-    });
-    const t = drag && drag.moved ? drag.target : null;
-    if (t) {
-      dropRing.setAttribute("cx", t.x);
-      dropRing.setAttribute("cy", t.y);
-      dropRing.setAttribute("r", t.r + 10);
-      dropRing.setAttribute("stroke-width", sw);
-      dropRing.style.display = "";
-    } else {
-      dropRing.style.display = "none";
+function layoutKreise(L) {
+  const data = { children: S.areas.map((a) => ({ a, children: S.roles.filter((r) => r.area === a.id).map((r) => ({ r })) })) };
+  const root = d3.hierarchy(data, (d) => d.children).sum((d) => (d.r ? 1 + 0.3 * d.r.acc.length : d.a && !(d.children || []).length ? 1.4 : 0));
+  const side = 300 * Math.sqrt(S.roles.length + S.areas.length + 1);
+  d3.pack().size([side, side]).padding((d) => (d.depth === 0 ? 36 : d.children && d.children.length > 1 ? Math.max(T.gap, 4) : 32))(root);
+  for (const n of root.descendants()) {
+    const x = n.x - side / 2, y = n.y - side / 2;
+    if (n.data.a) {
+      const s = Math.max(13, Math.min(20, n.r * 0.085));
+      L.set("a|" + n.data.a.id, { x, y, r: n.r, o: 1 });
+      L.set("la|" + n.data.a.id, { x, y, r: n.r - 0.72 * s - 8, o: 1, s });
+    } else if (n.data.r) {
+      L.set("r|" + n.data.r.id, { x, y, r: n.r, o: 1 });
+      roleLabel(L, n.data.r, x, y, n.r, true);
     }
   }
+  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+}
 
-  // --- Colours of the selected bubble -----------------------------------------------
-  function buildColors() {
-    colorsEl.textContent = "";
-    const add = (value, label) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "swatch" + (value ? "" : " none");
-      if (value) b.style.setProperty("--sw", value);
-      b.dataset.color = value;
-      b.title = label;
-      b.setAttribute("aria-label", label);
-      colorsEl.appendChild(b);
-    };
-    add("", "Ohne Farbe");
-    palette().forEach((c, i) => add(c, "Farbe " + (i + 1)));
-    const lab = document.createElement("label");
-    lab.title = "Eigene Farbe";
-    lab.textContent = "+";
-    const inp = document.createElement("input");
-    inp.type = "color";
-    inp.id = "custom-color";
-    inp.setAttribute("aria-label", "Eigene Farbe");
-    lab.appendChild(inp);
-    colorsEl.appendChild(lab);
-    inp.addEventListener("input", () => setColor(inp.value, true));
-    inp.addEventListener("change", () => setColor(inp.value, false));
+let layoutVersion = 0;
+function runSim(nodes, seed, setup, ticks = 320) {
+  // gleiche Daten, gleiche Karte: nur neu rechnen, wenn sich etwas geändert hat
+  if (seed.ver === layoutVersion && nodes.every((n) => seed.has(n.key))) {
+    for (const n of nodes) { const s = seed.get(n.key); n.x = s.x; n.y = s.y; }
+    return;
   }
-  let colorSnap = false;
-  function setColor(value, live) {
-    if (!sel.size) return;
-    if (!colorSnap) {
-      snapshot();
-      colorSnap = true;
-    }
-    if (!live) colorSnap = false;
-    for (const b of sel) b.color = value || null;
-    needsSave = true;
-    dirty = true;
-    updateChrome();
-  }
-  colorsEl.addEventListener("pointerdown", (e) => {
-    if (editing) e.preventDefault();
+  seed.ver = layoutVersion;
+  for (const n of nodes) { const s = seed.get(n.key) || cur.get(n.key); if (s && isFinite(s.x)) { n.x = s.x; n.y = s.y; } }
+  const sim = d3.forceSimulation(nodes).stop();
+  setup(sim);
+  for (let i = 0; i < ticks; i++) sim.tick();
+  for (const n of nodes) seed.set(n.key, { x: n.x, y: n.y });
+}
+
+function layoutMenschen(L) {
+  const P = S.people.map((p) => ({ key: "p|" + p.id, id: p.id, r: personR(p), kind: "p" }));
+  const byId = new Map(P.map((n) => [n.id, n]));
+  const R = S.roles.map((r) => ({ key: "r|" + r.id, id: r.id, r: roleR(r), kind: "r", free: !r.people.length }));
+  const links = [];
+  // Rollen überlappen ihre Person leicht, damit sie wie Tropfen mit ihr verschmelzen
+  for (const n of R) for (const pid of role(n.id).people) links.push({ source: n, target: byId.get(pid), d: n.r + byId.get(pid).r - 8 });
+  const spread = 140 * Math.sqrt(P.length + 1);
+  runSim([...P, ...R], seeds.menschen, (sim) => {
+    sim.force("link", d3.forceLink(links).distance((l) => l.d).strength(1).iterations(3))
+      .force("charge", d3.forceManyBody().strength((n) => (n.kind === "p" ? -1500 : -90)))
+      .force("collide", d3.forceCollide((n) => (n.kind === "p" ? n.r + 2 : n.r - 6)).iterations(2))
+      .force("x", d3.forceX((n) => (n.free ? spread + 120 : 0)).strength((n) => (n.free ? 0.2 : 0.05)))
+      .force("y", d3.forceY(0).strength((n) => (n.free ? 0.1 : 0.06)));
   });
-  colorsEl.addEventListener("click", (e) => {
-    const s = e.target.closest(".swatch");
-    if (s) {
-      colorSnap = false;
-      setColor(s.dataset.color, false);
-    }
+  for (const n of P) {
+    L.set(n.key, { x: n.x, y: n.y, r: n.r, o: 1 });
+    L.set("lp|" + n.id, { x: n.x, y: n.y, r: n.r, o: 1, s: Math.min(19, 13 + n.r * 0.05) });
+  }
+  for (const n of R) { L.set(n.key, { x: n.x, y: n.y, r: n.r, o: 1 }); roleLabel(L, role(n.id), n.x, n.y, n.r, false); }
+  for (const l of S.links) L.set("l|" + l.id, { o: sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id) ? 1 : 0 });
+}
+
+function layoutNetz(L) {
+  const n = S.areas.length, ring = 150 + 70 * Math.sqrt(S.roles.length);
+  const centers = new Map(S.areas.map((a, i) => [a.id, { x: Math.cos((i / n) * 2 * Math.PI - Math.PI / 2) * ring, y: Math.sin((i / n) * 2 * Math.PI - Math.PI / 2) * ring }]));
+  const R = S.roles.map((r) => ({ key: "r|" + r.id, id: r.id, r: roleR(r), a: r.area }));
+  const byId = new Map(R.map((x) => [x.id, x]));
+  const links = S.links.map((l) => ({ source: byId.get(l.from), target: byId.get(l.to), same: role(l.from).area === role(l.to).area }));
+  runSim(R, seeds.netz, (sim) => {
+    sim.force("link", d3.forceLink(links).distance((l) => (l.same ? 120 : 220)).strength(0.08))
+      .force("charge", d3.forceManyBody().strength(-260))
+      .force("collide", d3.forceCollide((x) => x.r + 26).iterations(2))
+      .force("x", d3.forceX((x) => centers.get(x.a).x).strength(0.2))
+      .force("y", d3.forceY((x) => centers.get(x.a).y).strength(0.2));
   });
+  for (const x of R) {
+    L.set(x.key, { x: x.x, y: x.y, r: x.r, o: 1 });
+    L.set("h|" + x.id, { x: x.x, y: x.y, r: x.r + 36, o: 1 });
+    roleLabel(L, role(x.id), x.x, x.y, x.r, true);
+  }
+  for (const a of S.areas) {
+    const mine = R.filter((x) => x.a === a.id);
+    const c = mine.length ? { x: d3.mean(mine, (m) => m.x), y: d3.mean(mine, (m) => m.y) } : centers.get(a.id);
+    const rad = mine.length ? d3.max(mine, (m) => Math.hypot(m.x - c.x, m.y - c.y) + m.r + 36) : 60;
+    const s = 16;
+    L.set("a|" + a.id, { x: c.x, y: c.y, r: mine.length ? 0 : 60, o: 1 });
+    L.set("la|" + a.id, { x: c.x, y: c.y, r: rad + 6, o: 1, s });
+  }
+  for (const l of S.links) L.set("l|" + l.id, { o: 1 });
+}
 
-  function updateChrome() {
-    btn.child.disabled = !selected;
-    btn.del.disabled = !selected;
-    btn.group.disabled = !selected || !Object.keys(selected.docks).length;
-    const pair = linkPair();
-    btn.link.disabled = !pair;
-    btn.link.textContent = pair && pair[1].id in pair[0].links ? "Trennen" : "Verbinden";
-    btn.undo.disabled = !undoStack.length;
-    btn.redo.disabled = !redoStack.length;
-    colorsEl.hidden = !selected;
-    if (selected && bubbles.has(selected.id)) {
-      for (const s of colorsEl.querySelectorAll(".swatch")) s.setAttribute("aria-pressed", String((selected.color || "") === s.dataset.color));
-      const path = [];
-      let b = selected;
-      const seen = new Set();
-      while (b && !seen.has(b)) {
-        seen.add(b);
-        path.unshift(name(b));
-        b = bubbles.get(b.parents[0]);
+// ---------- Animation ----------
+let anim = null, dragKeys = new Set();
+function relayout(opts = {}) {
+  const tgt = layout(lens);
+  const from = new Map();
+  for (const [k, v] of cur) from.set(k, { ...v });
+  for (const [k, v] of tgt) if (!from.has(k)) from.set(k, { ...v, r: 0, o: 0 });
+  for (const [k, v] of from) if (!tgt.has(k)) tgt.set(k, { ...v, r: 0, o: 0, gone: true });
+  const t0 = performance.now(), dur = opts.instant ? 0 : opts.dur || 750;
+  cancelAnimationFrame(anim);
+  const step = (now) => {
+    const t = dur ? Math.min(1, (now - t0) / dur) : 1, e = d3.easeCubicInOut(t);
+    for (const [k, b] of tgt) {
+      if (dragKeys.has(k)) continue;
+      const a = from.get(k), c = {};
+      for (const p of ["x", "y", "r", "o", "s"]) if (b[p] !== undefined || a[p] !== undefined) {
+        const av = a[p] ?? b[p], bv = b[p] ?? a[p];
+        c[p] = av + (bv - av) * e;
       }
-      const extra = selected.parents.length > 1 ? `  (gehört zu ${selected.parents.length} Bubbles)` : "";
-      crumbEl.textContent = sel.size > 1 ? `${sel.size} Bubbles ausgewählt` : path.join(" › ") + extra;
-    } else {
-      crumbEl.textContent = "";
+      cur.set(k, c);
     }
-    if (!treeEl.hidden) renderTree();
-  }
-
-  function hint(html, live = false) {
-    hintEl.innerHTML = html;
-    hintEl.classList.toggle("is-live", live);
-  }
-  function flash(text) {
-    clearTimeout(flashTimer);
-    hintEl.textContent = text;
-    hintEl.classList.add("is-live");
-    flashTimer = setTimeout(() => hint(IDLE_HINT), 3200);
-  }
-  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-  // --- Saving, loading, undo ------------------------------------------------------
-  function serialize() {
-    return {
-      v: 1,
-      bubbles: [...bubbles.values()].map((b) => {
-        const o = { id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents };
-        if (b.color) o.color = b.color;
-        if (Object.keys(b.docks).length) o.docks = b.docks;
-        if (Object.keys(b.links).length) o.links = Object.keys(b.links);
-        return o;
-      }),
-    };
-  }
-  function save() {
-    needsSave = false;
-    try {
-      localStorage.setItem(STORE, JSON.stringify(serialize()));
-    } catch (e) {
-      /* storage unavailable: the canvas keeps working */
-    }
-  }
-  function snapshot() {
-    undoStack.push(JSON.stringify(serialize().bubbles));
-    if (undoStack.length > 80) undoStack.shift();
-    redoStack.length = 0;
-    updateChrome();
-  }
-  const HEX = /^#[0-9a-f]{6}$/i;
-  function load(list, keep) {
-    const old = bubbles;
-    bubbles = new Map();
-    for (const o of list || []) {
-      if (!o || o.id == null) continue;
-      const id = String(o.id);
-      bubbles.set(id, {
-        id,
-        text: String(o.text || ""),
-        x: Number(o.x) || 0,
-        y: Number(o.y) || 0,
-        parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
-        color: HEX.test(o.color || "") ? o.color : null,
-        docks: o.docks && typeof o.docks === "object" ? { ...o.docks } : {},
-        links: Array.isArray(o.links) ? Object.fromEntries(o.links.map((x) => [String(x), 1])) : {},
-        r: keep && old.get(id) ? old.get(id).r : 0,
-        vx: 0,
-        vy: 0,
-      });
-    }
-    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => p !== b.id && bubbles.has(p));
-    // Break any cycle a hand-edited file might carry
-    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)));
-    // Earlier a bubble could belong to several; now it lives in one, and the
-    // bubbles it joined stay docked to each other
-    for (const b of bubbles.values()) {
-      if (b.parents.length < 2) continue;
-      const [first, ...rest] = b.parents.map((id) => bubbles.get(id));
-      b.parents = [first.id];
-      for (const o of rest) if (sameLevel(first, o)) dockPair(first, o, 0.85);
-    }
-    for (const b of bubbles.values()) {
-      for (const id in b.docks) {
-        const o = bubbles.get(id);
-        const k = Number(b.docks[id]);
-        if (!o || o === b || !sameLevel(b, o) || !(k > 0.2 && k <= 1.2)) delete b.docks[id];
-        else o.docks[b.id] = k;
-      }
-    }
-    // Connections hold both ways and never tie a bubble to one it lies in
-    for (const b of bubbles.values()) {
-      for (const id in b.links) {
-        const o = bubbles.get(id);
-        if (!o || o === b || isAncestor(b, o) || isAncestor(o, b)) delete b.links[id];
-        else o.links[b.id] = 1;
-      }
-    }
-    sel = new Set([...sel].map((b) => bubbles.get(b.id)).filter(Boolean));
-    selected = (selected && bubbles.get(selected.id)) || [...sel].pop() || null;
-    editing = null;
-    topo();
-    for (const b of bubbles.values()) if (!b.r) b.r = MIN_R[dd(depthOf.get(b.id))] * T.size;
-    dirty = true;
-  }
-  function settle(n = 600) {
-    for (let i = 0; i < n; i++) if (step() < 0.01 && i > 30) break;
-  }
-  function travel(from, to) {
-    if (editing) labels.get(editing.id)?.blur();
-    const s = from.pop();
-    if (!s) return;
-    to.push(JSON.stringify(serialize().bubbles));
-    load(JSON.parse(s), true);
-    needsSave = true;
-    updateChrome();
-  }
-  const undo = () => travel(undoStack, redoStack);
-  const redo = () => travel(redoStack, undoStack);
-
-  function sample() {
-    const a = make("Messestand Frankfurt", -260, 0, [], "#f4d8c6");
-    const b = make("Showroom Offenbach", 260, 0, [], "#cfe0ef");
-    make("Empfangstresen", a.x - 40, a.y + 10, [a.id]);
-    make("Lounge mit Sitzinseln", a.x + 40, a.y + 50, [a.id]);
-    const m = make("Materialien", a.x - 10, a.y + 100, [a.id], "#f3e5b1");
-    make("Eiche geölt", m.x - 10, m.y, [m.id], "#ddd6cb");
-    make("Filz", m.x + 10, m.y + 10, [m.id]);
-    make("Schaufenster", b.x - 20, b.y + 30, [b.id]);
-    make("Lichtplanung", b.x + 30, b.y + 70, [b.id], "#e2d6f0");
-    make("Markenfarben", a.x + 60, a.y - 30, [a.id], "#d3e6cf");
-    dockPair(a, b, 0.88);
-  }
-
-  function fit() {
-    const W = innerWidth;
-    const H = innerHeight;
-    const top = 64;
-    const bottom = selected ? 190 : 140;
-    if (!bubbles.size) {
-      view = { x: W / 2, y: top + (H - top - bottom) / 2, k: 1 };
-      dirty = true;
-      return;
-    }
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const b of bubbles.values()) {
-      x0 = Math.min(x0, b.x - b.r);
-      y0 = Math.min(y0, b.y - b.r);
-      x1 = Math.max(x1, b.x + b.r);
-      y1 = Math.max(y1, b.y + b.r);
-    }
-    const k = Math.max(0.2, Math.min(1.1, (W - 40) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
-    view = { k, x: W / 2 - ((x0 + x1) / 2) * k, y: top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * k };
-    dirty = true;
-  }
-
-  // --- Editing ------------------------------------------------------------------
-  const PLAIN = (() => {
-    const d = document.createElement("div");
-    try {
-      d.contentEditable = "plaintext-only";
-      return d.contentEditable === "plaintext-only";
-    } catch (e) {
-      return false;
-    }
-  })();
-
-  function select(b) {
-    selected = b;
-    sel = new Set(b ? [b] : []);
-    dirty = true;
-    updateChrome();
-  }
-  function toggleSelect(b) {
-    if (sel.has(b)) {
-      sel.delete(b);
-      if (selected === b) selected = [...sel].pop() || null;
-    } else {
-      sel.add(b);
-      selected = b;
-    }
-    dirty = true;
-    updateChrome();
-  }
-  // Selected bubbles without a selected bubble around them
-  function selTops() {
-    const list = [...sel].filter((b) => bubbles.has(b.id));
-    return list.filter((b) => !list.some((o) => o !== b && isAncestor(o, b)));
-  }
-
-  function startEdit(b, isNew = false) {
-    if (editing && editing !== b) labels.get(editing.id)?.blur();
-    select(b);
-    editing = b;
-    b._new = isNew;
-    b._snap = isNew;
-    step();
+    if (t >= 1) for (const [k, b] of tgt) if (b.gone) { cur.delete(k); drop(k); }
     render();
-    const lab = labels.get(b.id);
-    lab.contentEditable = PLAIN ? "plaintext-only" : "true";
-    lab.classList.add("editing");
-    lab.focus({ preventScroll: true });
-    const range = document.createRange();
-    range.selectNodeContents(lab);
-    range.collapse(false);
-    const sel = getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    hint("Schreiben · Enter: neuer Absatz · Esc, Strg/Cmd+Enter oder Klick daneben: fertig");
-  }
-
-  function onInput(b, lab) {
-    if (!b._snap) {
-      snapshot();
-      b._snap = true;
-    }
-    b.text = lab.innerText.replace(/\n+$/, "");
-    lab.classList.toggle("is-empty", !b.text);
-    needsSave = true;
-    dirty = true;
-    updateChrome();
-  }
-
-  function onLabelKey(e, lab) {
-    e.stopPropagation();
-    // Enter starts a new paragraph; Esc or Strg/Cmd+Enter finishes
-    if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
-      e.preventDefault();
-      lab.blur();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      document.execCommand("insertLineBreak");
-    }
-  }
-
-  function onPaste(e) {
-    e.preventDefault();
-    const text = (e.clipboardData && e.clipboardData.getData("text/plain")) || "";
-    document.execCommand("insertText", false, text);
-  }
-
-  function finishEdit(b) {
-    if (editing !== b) return;
-    editing = null;
-    const lab = labels.get(b.id);
-    if (lab) {
-      lab.contentEditable = "false";
-      lab.classList.remove("editing");
-    }
-    b.text = b.text.trim();
-    if (b._new && !b.text && !(kids.get(b.id) || []).length) remove(b);
-    hint(IDLE_HINT);
-    needsSave = true;
-    dirty = true;
-    updateChrome();
-  }
-
-  // --- Pointer ------------------------------------------------------------------
-  function local(e) {
-    const r = svg.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  }
-  function toWorld(e) {
-    const p = local(e);
-    return { x: (p.x - view.x) / view.k, y: (p.y - view.y) / view.k };
-  }
-  function hitTest(p, exclude) {
-    let best = null;
-    let bestD = -1;
-    for (const b of bubbles.values()) {
-      if (exclude && exclude.has(b)) continue;
-      if (!insideShape(b, p)) continue;
-      const d = depthOf.get(b.id);
-      if (!best || d > bestD || (d === bestD && b.r < best.r)) {
-        best = b;
-        bestD = d;
-      }
-    }
-    return best;
-  }
-
-  // One gesture for everything: where a bubble is let go decides where it
-  // lives (inside the bubble it mostly sits in, or on the board), and it docks
-  // to whatever it touches there.
-  function modeOf() {
-    return "";
-  }
-  function holds(t, b, current) {
-    if (t.r < b.r * 1.15) return false;
-    const dist = Math.hypot(b.x - t.x, b.y - t.y);
-    // Leaving needs a clear pull outwards; entering needs the bubble mostly inside
-    return current ? dist < t.r + b.r * 0.1 : dist + b.r * 0.4 < t.r * 0.95;
-  }
-  function containerFor(b, skip) {
-    const cur = bubbles.get(b.parents[0]) || null;
-    let best = null;
-    let bestD = -1;
-    for (const t of bubbles.values()) {
-      if (skip.has(t) || !holds(t, b, t === cur)) continue;
-      const d = depthOf.get(t.id);
-      if (d > bestD || (d === bestD && t.r < best.r)) {
-        best = t;
-        bestD = d;
-      }
-    }
-    // Stay in the current bubble while still inside it, unless a deeper one takes it
-    if (cur && !skip.has(cur) && holds(cur, b, true) && (!best || depthOf.get(best.id) <= depthOf.get(cur.id))) best = cur;
-    return best;
-  }
-  function dropPlan(b) {
-    const skip = new Set();
-    for (const g of drag && drag.group ? drag.group : [b]) for (const x of subtree(g)) skip.add(x);
-    const into = containerFor(b, skip);
-    const cur = bubbles.get(b.parents[0]) || null;
-    const moved = into !== cur;
-    const pid = into ? into.id : null;
-    const now = dockTargets(b, new Set(drag && drag.group ? drag.group : []), pid);
-    const left = moved
-      ? Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean)
-      : Object.keys(b.docks)
-          .map((id) => bubbles.get(id))
-          .filter((o) => o && !(drag && drag.group && drag.group.includes(o)) && !now.some((x) => x.o === o));
-    const fresh = now.filter((x) => moved || !(x.o.id in b.docks));
-    return { kind: "dock", into, cur, moved, now, fresh, left };
-  }
-
-  function dragHint() {
-    const b = drag.b;
-    const p = dropPlan(b);
-    drag.target = p.moved ? p.into : null;
-    const list = (xs) => xs.map((x) => "»" + esc(name(x)) + "«").join(" und ");
-    const parts = [];
-    if (p.moved) parts.push(p.into ? `in ${list([p.into])} legen` : "auf das Brett legen");
-    if (p.fresh.length) parts.push(`an ${list(p.fresh.map((x) => x.o))} andocken`);
-    else if (!p.moved && p.left.length) parts.push(`von ${list(p.left)} lösen`);
-    hint(parts.length ? "Loslassen: " + parts.join(" und ") : "Verschieben · berühren dockt an · in eine Bubble ziehen legt hinein", true);
-  }
-
-  // A bubble that took its colour from the bubble it sat in keeps it when it moves
-  function keepColor(b) {
-    if (b.color) return;
-    const c = colorOf(b);
-    if (c) b.color = c;
-  }
-
-  function dropOne(b) {
-    const p = dropPlan(b);
-    if (p.moved) {
-      keepColor(b);
-      undockAll(b);
-      b.parents = p.into ? [p.into.id] : [];
-    } else {
-      for (const o of p.left) {
-        delete b.docks[o.id];
-        delete o.docks[b.id];
-      }
-    }
-    for (const { o, k } of p.now) dockPair(b, o, k);
-    const parts = [];
-    if (p.moved) parts.push(p.into ? `liegt jetzt in »${name(p.into)}«` : "liegt jetzt auf dem Brett");
-    if (p.fresh.length) parts.push(`ist an ${p.fresh.map((x) => "»" + name(x.o) + "«").join(" und ")} angedockt`);
-    else if (!p.moved && p.left.length) parts.push(`ist von ${p.left.map((x) => "»" + name(x) + "«").join(" und ")} gelöst`);
-    return parts.length ? `»${name(b)}« ${parts.join(" und ")}` : "";
-  }
-
-  function drop() {
-    const msgs = [];
-    for (const g of drag.group) {
-      const m = dropOne(g);
-      if (m) msgs.push(m);
-      // Let it glide on a little with the speed it was thrown at
-      g.vx = drag.vx * T.throw;
-      g.vy = drag.vy * T.throw;
-    }
-    if (msgs.length === 1) flash(msgs[0]);
-    else if (msgs.length > 1) flash(`${msgs.length} Bubbles neu angeordnet`);
-    topo();
-    needsSave = true;
-    dirty = true;
-  }
-
-  function pinchState() {
-    const [a, b] = [...pointers.values()];
-    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
-  }
-
-  function startPan(e) {
-    pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false, middle: e.button === 1 };
-    if (pan.middle) svg.classList.add("is-panning");
-  }
-
-  // Middle button: no autoscroll, no paste on Linux
-  svg.addEventListener("mousedown", (e) => {
-    if (e.button === 1) e.preventDefault();
-  });
-  svg.addEventListener("auxclick", (e) => e.preventDefault());
-  svg.addEventListener("contextmenu", (e) => e.preventDefault());
-
-  svg.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
-    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    if (e.button === 1) {
-      e.preventDefault();
-      if (!drag && !pinch) startPan(e);
-      return;
-    }
-    pointers.set(e.pointerId, local(e));
-    if (pointers.size === 2) {
-      if (drag && drag.moved) return;
-      drag = null;
-      pan = null;
-      const s = pinchState();
-      pinch = { ...s, vx: view.x, vy: view.y, k: view.k };
-      return;
-    }
-    if (pointers.size > 2) return;
-    const w = toWorld(e);
-    const hit = hitTest(w);
-    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, mode: "", vx: 0, vy: 0 };
-    else startPan(e);
-  });
-
-  svg.addEventListener("pointermove", (e) => {
-    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
-    if (pinch && pointers.size >= 2) {
-      const s = pinchState();
-      const k = Math.max(0.2, Math.min(3, (pinch.k * s.d) / pinch.d));
-      const wx = (pinch.cx - pinch.vx) / pinch.k;
-      const wy = (pinch.cy - pinch.vy) / pinch.k;
-      view = { k, x: s.cx - wx * k, y: s.cy - wy * k };
-      dirty = true;
-      return;
-    }
-    if (drag && e.pointerId === drag.id) {
-      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) {
-        drag.moved = true;
-        snapshot();
-        if (editing) labels.get(editing.id)?.blur();
-        // Dragging one of several selected bubbles moves them all
-        if (sel.has(drag.b) && sel.size > 1) {
-          selected = drag.b;
-          drag.group = selTops();
-          if (!drag.group.includes(drag.b)) drag.group = [drag.b];
-        } else {
-          select(drag.b);
-          drag.group = [drag.b];
-        }
-        drag.exclude = new Set();
-        for (const g of drag.group) for (const x of subtree(g)) drag.exclude.add(x);
-        svg.classList.add("is-dragging");
-      }
-      if (drag.moved) {
-        const w = toWorld(e);
-        const dx = w.x - drag.last.x;
-        const dy = w.y - drag.last.y;
-        const seen = new Set();
-        for (const g of drag.group) moveTree(g, dx, dy, seen);
-        drag.vx = drag.vx * 0.5 + dx * 0.5;
-        drag.vy = drag.vy * 0.5 + dy * 0.5;
-        drag.t = performance.now();
-        drag.last = w;
-        drag.mode = modeOf(e);
-        dragHint();
-        dirty = true;
-      }
-    } else if (pan && e.pointerId === pan.id) {
-      const dx = e.clientX - pan.sx;
-      const dy = e.clientY - pan.sy;
-      if (!pan.moved && Math.hypot(dx, dy) > 3) pan.moved = true;
-      if (pan.moved) {
-        view.x = pan.vx + dx;
-        view.y = pan.vy + dy;
-        dirty = true;
-      }
-    }
-  });
-
-  function endPointer(e) {
-    pointers.delete(e.pointerId);
-    if (pinch) {
-      if (pointers.size < 2) pinch = null;
-      return;
-    }
-    if (drag && e.pointerId === drag.id) {
-      if (drag.moved) {
-        drag.mode = modeOf(e);
-        // A pause before letting go means no throw
-        if (performance.now() - (drag.t || 0) > 150) {
-          drag.vx = 0;
-          drag.vy = 0;
-        }
-        if (e.type !== "pointercancel") drop();
-        svg.classList.remove("is-dragging");
-        hint(IDLE_HINT);
-      } else if (e.type === "pointerup") {
-        if (editing && editing !== drag.b) labels.get(editing.id)?.blur();
-        if (e.shiftKey) toggleSelect(drag.b);
-        else select(drag.b);
-      }
-      drag = null;
-      dirty = true;
-      updateChrome();
-    } else if (pan && e.pointerId === pan.id) {
-      if (!pan.moved && !pan.middle && e.type === "pointerup" && !e.shiftKey) select(null);
-      svg.classList.remove("is-panning");
-      pan = null;
-    }
-  }
-  svg.addEventListener("pointerup", endPointer);
-  svg.addEventListener("pointercancel", endPointer);
-
-  // Double-click: on a bubble write into it, on free space start a new one
-  svg.addEventListener("dblclick", (e) => {
-    const w = toWorld(e);
-    const hit = hitTest(w);
-    if (hit) {
-      startEdit(hit);
-      return;
-    }
-    snapshot();
-    startEdit(make("", w.x, w.y), true);
-    needsSave = true;
-  });
-
-  svg.addEventListener(
-    "wheel",
-    (e) => {
-      e.preventDefault();
-      const p = local(e);
-      const zoom = e.ctrlKey || e.metaKey || e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40);
-      if (zoom) {
-        const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015) * (e.deltaMode === 1 ? 30 : 1));
-        const k = Math.max(0.2, Math.min(3, view.k * f));
-        view.x = p.x - ((p.x - view.x) * k) / view.k;
-        view.y = p.y - ((p.y - view.y) * k) / view.k;
-        view.k = k;
-      } else {
-        view.x -= e.deltaX;
-        view.y -= e.deltaY;
-      }
-      dirty = true;
-    },
-    { passive: false }
-  );
-
-  function addChild(p) {
-    if (!p || !bubbles.has(p.id)) return;
-    snapshot();
-    startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
-  }
-
-  const MOD_KEYS = new Set(["Shift", "Control", "Meta", "Alt"]);
-  window.addEventListener("keydown", (e) => {
-    if (editing || e.target instanceof HTMLInputElement) return;
-    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
-      drag.mode = modeOf(e);
-      dragHint();
-      return;
-    }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      sel = new Set(bubbles.values());
-      selected = [...sel].pop() || null;
-      dirty = true;
-      updateChrome();
-      flash(`${sel.size} Bubbles ausgewählt`);
-    } else if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
-      e.preventDefault();
-      redo();
-    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-      e.preventDefault();
-      undo();
-    } else if ((e.key === "Delete" || e.key === "Backspace") && sel.size) {
-      e.preventDefault();
-      deleteSelection();
-    } else if (e.key === "Enter" && selected) {
-      e.preventDefault();
-      startEdit(selected);
-    } else if (e.key === "Tab" && selected) {
-      e.preventDefault();
-      addChild(selected);
-    } else if (e.key === "Escape") {
-      if (!panel.hidden) toggleMenu(false);
-      else if (!treeEl.hidden) toggleTree(false);
-      else select(null);
-    } else if (selected && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && e.key !== " ") {
-      // Typing on a selected bubble writes into it
-      e.preventDefault();
-      snapshot();
-      selected.text += e.key;
-      const b = selected;
-      startEdit(b);
-      b._snap = true;
-      needsSave = true;
-    }
-  });
-  window.addEventListener("keyup", (e) => {
-    if (MOD_KEYS.has(e.key) && drag && drag.moved) {
-      drag.mode = modeOf(e);
-      dragHint();
-    }
-  });
-
-  // --- Tools ----------------------------------------------------------------------
-  // Keep the text being edited when a tool button is pressed
-  $("tools").addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button") && editing) e.preventDefault();
-  });
-
-  btn.new.addEventListener("click", () => {
-    if (editing) labels.get(editing.id)?.blur();
-    snapshot();
-    const cx = (innerWidth / 2 - view.x) / view.k + (Math.random() - 0.5) * 40;
-    const cy = (innerHeight / 2 - view.y) / view.k + (Math.random() - 0.5) * 40;
-    startEdit(make("", cx, cy), true);
-  });
-  btn.child.addEventListener("click", () => {
-    const p = selected;
-    if (editing) labels.get(editing.id)?.blur();
-    addChild(p);
-  });
-  function deleteSelection() {
-    if (editing) labels.get(editing.id)?.blur();
-    const list = [...sel].filter((b) => bubbles.has(b.id));
-    if (!list.length) return;
-    snapshot();
-    for (const b of list) remove(b);
-    select(null);
-  }
-  btn.del.addEventListener("click", deleteSelection);
-  // Two selected bubbles that may be connected (not one inside the other)
-  function linkPair() {
-    if (sel.size !== 2) return null;
-    const [a, b] = [...sel];
-    if (!bubbles.has(a.id) || !bubbles.has(b.id) || isAncestor(a, b) || isAncestor(b, a)) return null;
-    return [a, b];
-  }
-  btn.link.addEventListener("click", () => {
-    const pair = linkPair();
-    if (!pair) return;
-    const [a, b] = pair;
-    snapshot();
-    if (b.id in a.links) {
-      delete a.links[b.id];
-      delete b.links[a.id];
-      flash(`»${name(a)}« und »${name(b)}« sind getrennt`);
-    } else {
-      a.links[b.id] = 1;
-      b.links[a.id] = 1;
-      flash(`»${name(a)}« und »${name(b)}« sind verbunden`);
-    }
-    needsSave = true;
-    dirty = true;
-    updateChrome();
-  });
-  btn.group.addEventListener("click", () => {
-    if (!selected) return;
-    sel = dockGroup(selected);
-    dirty = true;
-    updateChrome();
-    flash(`${sel.size} angedockte Bubbles gewählt: zusammen ziehen verschiebt sie gemeinsam`);
-  });
-  btn.undo.addEventListener("click", undo);
-  btn.redo.addEventListener("click", redo);
-  btn.fit.addEventListener("click", fit);
-  btn.export.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "notizen.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  });
-  btn.import.addEventListener("click", () => importFile.click());
-  importFile.addEventListener("change", async () => {
-    const f = importFile.files && importFile.files[0];
-    importFile.value = "";
-    if (!f) return;
-    try {
-      const data = JSON.parse(await f.text());
-      snapshot();
-      load(Array.isArray(data) ? data : data.bubbles, false);
-      settle();
-      fit();
-      needsSave = true;
-      flash(`»${f.name}« geladen`);
-    } catch (err) {
-      flash("Diese Datei ließ sich nicht lesen. Erwartet wird ein Export aus diesem Tool (.json).");
-    }
-    updateChrome();
-  });
-
-  // --- Settings panel -------------------------------------------------------------
-  const panel = $("panel");
-  const menuBtn = $("menu-btn");
-  const tuneEl = $("tune");
-  const LOOK = new Set(["merge", "flow", "line", "lineOn", "lineColor", "font", "family", "ink", "shade", "saturation", "opacity", "dots"]);
-  const SIZE = new Set(["font", "family", "grow", "weight", "line", "lineOn"]);
-  const inputs = {};
-
-  function saveTune() {
-    try {
-      localStorage.setItem(TUNE_STORE, JSON.stringify(T));
-    } catch (e) {
-      /* ignore */
-    }
-  }
-  function applyTune(key) {
-    derive(T);
-    if (SIZE.has(key)) mcache.clear();
-    if (LOOK.has(key) || key === undefined) buildFilters();
-    // Wake everything up so new forces take effect
-    for (const b of bubbles.values()) b.vx += 1e-6;
-    dirty = true;
-    saveTune();
-    if (!panel.hidden) renderPresets();
-  }
-  function buildPanel() {
-    tuneEl.textContent = "";
-    for (const row of SPEC) {
-      if (row.length === 1) {
-        const h = document.createElement("h3");
-        h.textContent = row[0];
-        tuneEl.appendChild(h);
-        continue;
-      }
-      const [key, label, min, max, step] = row;
-      if (Array.isArray(min)) {
-        if (key !== "family") {
-          const h = document.createElement("div");
-          h.className = "tune-label";
-          h.textContent = label;
-          tuneEl.appendChild(h);
-        }
-        const box = document.createElement("div");
-        box.className = "tune-choice c" + min.length;
-        box.setAttribute("role", "group");
-        box.setAttribute("aria-label", label);
-        for (const [value, text] of min) {
-          const b = document.createElement("button");
-          b.type = "button";
-          b.id = `tune-${key}-${value}`;
-          b.textContent = text;
-          if (key === "family") b.style.fontFamily = FAMILIES[value];
-          if (key === "weight") b.style.fontWeight = value === "kraeftig" ? 700 : 400;
-          if (key === "palette") b.style.background = `linear-gradient(90deg, ${PALETTES[value].slice(0, 5).join(", ")})`, (b.style.color = "#2c2824");
-          b.addEventListener("click", () => {
-            if (key === "palette" && T.palette !== value) recolor(T.palette, value);
-            T[key] = value;
-            applyTune(key);
-            syncPanel();
-          });
-          box.appendChild(b);
-        }
-        box._choice = true;
-        inputs[key] = box;
-        tuneEl.appendChild(box);
-        continue;
-      }
-      const wrap = document.createElement("div");
-      wrap.className = "tune-row";
-      const id = "tune-" + key;
-      const lab = document.createElement("label");
-      lab.htmlFor = id;
-      lab.textContent = label;
-      wrap.appendChild(lab);
-      const inp = document.createElement("input");
-      inp.id = id;
-      const type = typeof DEFAULTS[key];
-      if (type === "boolean") {
-        inp.type = "checkbox";
-        inp.className = "switch";
-        inp.setAttribute("role", "switch");
-        inp.addEventListener("change", () => {
-          T[key] = inp.checked;
-          applyTune(key);
-          syncPanel();
-        });
-        wrap.appendChild(inp);
-      } else if (type === "string") {
-        // Free colour, with a way back to automatic
-        const box = document.createElement("span");
-        box.className = "tune-color";
-        const auto = document.createElement("button");
-        auto.type = "button";
-        auto.id = id + "-auto";
-        auto.textContent = "Automatisch";
-        auto.addEventListener("click", () => {
-          T[key] = "";
-          applyTune(key);
-          syncPanel();
-        });
-        inp.type = "color";
-        inp.addEventListener("input", () => {
-          T[key] = inp.value;
-          applyTune(key);
-          auto.setAttribute("aria-pressed", "false");
-        });
-        inp._auto = auto;
-        box.append(auto, inp);
-        wrap.appendChild(box);
-      } else {
-        const val = document.createElement("span");
-        val.className = "tune-val";
-        wrap.appendChild(val);
-        inp.type = "range";
-        inp.min = min;
-        inp.max = max;
-        inp.step = step;
-        inp.addEventListener("input", () => {
-          T[key] = Number(inp.value);
-          val.textContent = show(key, T[key]);
-          applyTune(key);
-        });
-        inp._val = val;
-        wrap.appendChild(inp);
-      }
-      inputs[key] = inp;
-      tuneEl.appendChild(wrap);
-    }
-    syncPanel();
-  }
-  // Slider values in words or percent rather than raw numbers
-  function show(key, v) {
-    if (key === "line") return v < 0.05 ? "keine" : v.toFixed(1) + " px";
-    if (key === "shade") return v < 0.01 ? "flach" : Math.round(v * 100) + " %";
-    if (key === "font" || key === "scale" || key === "inner" || key === "spacing" || key === "pull" || key === "push") return Math.round(v * 100) + " %";
-    if (key === "saturation") return v < 0.01 ? "grau" : Math.round(v * 100) + " %";
-    if (key === "linkPull") return v < 0.01 ? "keiner" : Math.round(v * 100) + " %";
-    if (key === "opacity" || key === "flow" || key === "linkW") return Math.round(v * 100) + " %";
-    if (key === "roundness") return v < 0.01 ? "frei" : v > 0.99 ? "rund" : Math.round(v * 100) + " %";
-    return Math.round((v / (key === "grow" ? 2 : 1)) * 100) + " %";
-  }
-  function syncPanel() {
-    renderPresets();
-    for (const key in inputs) {
-      const inp = inputs[key];
-      if (inp._choice) {
-        for (const b of inp.children) b.setAttribute("aria-pressed", String(b.id === `tune-${key}-${T[key]}`));
-      } else if (inp.type === "checkbox") inp.checked = !!T[key];
-      else if (inp.type === "color") {
-        inp.value = T[key] || (key === "lineColor" ? toHex(cssColor("--outline", "#595959")) : themeDark ? "#faf7f2" : "#2c2824");
-        inp._auto.setAttribute("aria-pressed", String(!T[key]));
-      } else {
-        inp.value = T[key];
-        inp._val.textContent = show(key, T[key]);
-        // Sliders that only matter while their switch says so
-        const off = (key === "roundness" && T.round) || (key === "line" && !T.lineOn);
-        if (key === "roundness" || key === "line") {
-          inp.disabled = off;
-          inp.parentElement.style.opacity = off ? "0.45" : "";
-        }
-      }
-    }
-  }
-  function toHex(c) {
-    if (HEX.test(c)) return c;
-    const m = c.match(/\d+/g);
-    if (!m) return "#595959";
-    return "#" + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, "0")).join("");
-  }
-  function toggleMenu(open) {
-    panel.hidden = !open;
-    menuBtn.setAttribute("aria-expanded", String(open));
-    if (open) syncPanel();
-  }
-  menuBtn.addEventListener("click", () => toggleMenu(panel.hidden));
-  // New colour set: every bubble coloured from the old set takes the same slot in the new one
-  function recolor(from, to) {
-    const a = PALETTES[from] || LEGACY[from]?.colors || PALETTES.pastell;
-    const b = PALETTES[to] || PALETTES.pastell;
-    const hit = [...bubbles.values()].filter((x) => x.color && a.includes(x.color.toLowerCase()));
-    if (hit.length) {
-      snapshot();
-      for (const x of hit) x.color = b[a.indexOf(x.color.toLowerCase())];
-      needsSave = true;
-    }
-    queueMicrotask(() => {
-      buildColors();
-      updateChrome();
-    });
-  }
-
-  function setAll(values) {
-    if (values && LEGACY[values.palette]) {
-      recolor(values.palette, LEGACY[values.palette].to);
-      values = { ...values, palette: LEGACY[values.palette].to };
-    }
-    if (values && values.palette && values.palette !== T.palette) recolor(T.palette, values.palette);
-    Object.assign(T, clean(values));
-    mcache.clear();
-    applyTune();
-    syncPanel();
-  }
-  $("tune-reset").addEventListener("click", () => setAll(base()));
-
-  // --- Saved settings -------------------------------------------------------------
-  const presetsEl = $("presets");
-  function savePresets() {
-    try {
-      localStorage.setItem(PRESET_STORE, JSON.stringify(presets));
-    } catch (e) {
-      /* ignore */
-    }
-  }
-  const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
-  function renderPresets() {
-    presetsEl.textContent = "";
-    if (!presets.list.length) {
-      const p = document.createElement("p");
-      p.className = "tune-note";
-      p.textContent = "Noch nichts gespeichert.";
-      presetsEl.appendChild(p);
-    }
-    presets.list.forEach((st, i) => {
-      const row = document.createElement("div");
-      row.className = "preset" + (same(T, clean(st.values)) ? " is-current" : "");
-      const nm = document.createElement("button");
-      nm.type = "button";
-      nm.className = "preset-name";
-      nm.id = "style-" + (i + 1);
-      const num = document.createElement("span");
-      num.className = "num";
-      num.textContent = String(i + 1);
-      // A small preview: colour set, font
-      const title = document.createElement("span");
-      const v = clean(st.values);
-      const sw = document.createElement("span");
-      sw.className = "preset-sw";
-      sw.style.background = `linear-gradient(90deg, ${(PALETTES[v.palette] || PALETTES.pastell).slice(0, 4).join(", ")})`;
-      title.append(sw, document.createTextNode([FAMILIES_NAME[v.family], v.round ? "rund" : "frei", v.shade > 0.05 ? "3D" : "flach"].join(" · ")));
-      nm.append(num, title);
-      nm.title = `Einstellungen ${i + 1} laden`;
-      nm.addEventListener("click", () => setAll(st.values));
-      const def = document.createElement("button");
-      def.type = "button";
-      def.className = "preset-def";
-      const isDef = presets.def === st.id;
-      def.textContent = isDef ? "★" : "☆";
-      def.setAttribute("aria-pressed", String(isDef));
-      def.title = isDef ? "Nicht mehr beim Öffnen verwenden" : "Beim Öffnen verwenden";
-      def.addEventListener("click", () => {
-        presets.def = isDef ? null : st.id;
-        savePresets();
-        renderPresets();
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "preset-del";
-      del.textContent = "×";
-      del.setAttribute("aria-label", `Einstellungen ${i + 1} löschen`);
-      del.addEventListener("click", () => {
-        presets.list = presets.list.filter((x) => x !== st);
-        if (presets.def === st.id) presets.def = null;
-        savePresets();
-        renderPresets();
-      });
-      row.append(nm, def, del);
-      presetsEl.appendChild(row);
-    });
-  }
-  const FAMILIES_NAME = { sans: "Manrope", serif: "Playfair", mono: "DM Mono" };
-  $("preset-add").addEventListener("click", () => {
-    const values = {};
-    for (const k in DEFAULTS) values[k] = T[k];
-    presets.list.push({ id: "c" + Date.now().toString(36), values });
-    savePresets();
-    renderPresets();
-    flash(`Als ${presets.list.length} gespeichert`);
-  });
-
-  // --- Theme ----------------------------------------------------------------------
-  const THEME_STORE = "notizen-theme-v1";
-  const darkMq = matchMedia("(prefers-color-scheme: dark)");
-  function setTheme(mode, keep) {
-    if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
-    else delete document.documentElement.dataset.theme;
-    if (!keep) {
-      try {
-        localStorage.setItem(THEME_STORE, mode);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
-  const themeMode = () => document.documentElement.dataset.theme || "system";
-  const isDark = () => themeMode() === "dark" || (themeMode() === "system" && darkMq.matches);
-  for (const m of ["light", "dark", "system"]) $("theme-" + m).addEventListener("click", () => setTheme(m));
-  $("theme-btn").addEventListener("click", () => setTheme(isDark() ? "light" : "dark"));
-  const onTheme = () => {
-    document.documentElement.dataset.dark = isDark() ? "1" : "0";
-    for (const m of ["light", "dark", "system"]) $("theme-" + m).setAttribute("aria-pressed", String(themeMode() === m));
-    $("theme-btn").title = isDark() ? "Zur hellen Ansicht" : "Zur dunklen Ansicht";
-    buildFilters();
-    syncPanel();
+    if (t < 1) anim = requestAnimationFrame(step);
   };
-  onTheme();
-  darkMq.addEventListener?.("change", onTheme);
-  new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  addEventListener("resize", () => {
-    dirty = true;
-  });
+  anim = requestAnimationFrame(step);
+  paint();
+  if (opts.fit) fit(tgt, opts.instant ? 0 : 800);
+}
 
-  // Web fonts arrive after the first measure: measure again
-  document.fonts?.ready.then(() => {
-    mcache.clear();
-    dirty = true;
-  });
-  document.fonts?.addEventListener?.("loadingdone", () => {
-    mcache.clear();
-    dirty = true;
-  });
-
-  // --- Structure panel (left) -----------------------------------------------------
-  const treeEl = $("tree");
-  const treeBtn = $("tree-btn");
-  function toggleTree(open) {
-    treeEl.hidden = !open;
-    treeBtn.setAttribute("aria-expanded", String(open));
-    if (open) renderTree();
+// ---------- Zeichnen ----------
+const els = new Map();
+const G = { a: $("#gArea"), h: $("#gArea"), l: $("#gLink"), r: $("#gRole"), p: $("#gRole") };
+function mk(tag, attrs, parent) { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function drop(k) { const e = els.get(k); if (e) { e.remove(); if (e._sub) e._sub.remove(); els.delete(k); } }
+function ensure(k) {
+  let e = els.get(k);
+  if (e) return e;
+  const t = k.split("|")[0];
+  if (t === "a" || t === "h" || t === "r" || t === "p") {
+    e = mk("circle", { "data-k": k }, G[t]);
+    if (t === "h") G.h.insertBefore(e, G.h.firstChild);
+  } else if (t === "l") {
+    e = mk("g", {}, G.l);
+    e._p = mk("path", { fill: "none", "marker-end": "url(#arrow)" }, e);
+    e._t = mk("text", { class: "lnk-t" }, e);
+  } else if (t === "la") {
+    e = mk("g", {}, $("#gTop"));
+    const id = "arc-" + k.slice(3);
+    e._p = mk("path", { id, fill: "none" }, e);
+    e._t = mk("text", { class: "lbl-area" }, e);
+    e._tp = mk("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, e._t);
+  } else if (t === "lr" || t === "lp") {
+    e = mk("text", { class: t === "lr" ? "lbl-role" : "lbl-person" }, $("#gTop"));
+  } else if (t === "c") {
+    e = mk("g", { "data-k": k }, $("#gTop"));
+    e._c = mk("circle", { r: 9.5 }, e);
+    e._t = mk("text", { class: "chipt" }, e);
   }
-  treeBtn.addEventListener("click", () => toggleTree(treeEl.hidden));
+  els.set(k, e);
+  paintOne(k, e);
+  return e;
+}
 
-  function renderTree() {
-    const scroll = treeEl.scrollTop;
-    treeEl.textContent = "";
-    const mk = (tag, cls, text) => {
-      const n = document.createElement(tag);
-      if (cls) n.className = cls;
-      if (text != null) n.textContent = text;
-      return n;
-    };
-    const byPos = (a, b) => a.y - b.y || a.x - b.x;
-    const node = (b, via) => {
-      const li = mk("li");
-      const bt = mk("button", "node");
-      bt.type = "button";
-      bt.dataset.id = b.id;
-      bt.dataset.via = via || "";
-      if (sel.has(b)) bt.setAttribute("aria-current", "true");
-      const dot = mk("span", "dot");
-      const col = colorOf(b);
-      if (col) dot.style.setProperty("--dot-c", col);
-      const txt = mk("span", "txt", name(b));
-      const docked = Object.keys(b.docks).map((id) => bubbles.get(id)).filter(Boolean);
-      if (docked.length) txt.appendChild(mk("span", "also", "angedockt an " + docked.map(name).join(", ")));
-      bt.append(dot, txt);
-      li.appendChild(bt);
-      return li;
-    };
-    const branch = (list, path) => {
-      const ul = mk("ul");
-      for (const b of list.slice().sort(byPos)) {
-        const li = node(b, path[path.length - 1]);
-        if (!path.includes(b.id)) {
-          const k = kids.get(b.id) || [];
-          if (k.length) li.appendChild(branch(k, [...path, b.id]));
-        }
-        ul.appendChild(li);
+function wrapLines(text, r, s) {
+  const max = Math.max(5, Math.floor((r * 1.55) / (s * 0.56)));
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    if (!line) line = w;
+    else if ((line + " " + w).length <= max) line += " " + w;
+    else { lines.push(line); line = w; }
+  }
+  if (line) lines.push(line);
+  if (lines.length > 3) { lines.length = 3; lines[2] += " …"; }
+  return lines.length ? lines : ["…"];
+}
+function setLines(e, lines, x, y, s, lh = 1.15) {
+  const key = lines.join("\n") + "|" + s;
+  if (e._key !== key) {
+    e._key = key;
+    e.textContent = "";
+    lines.forEach((ln) => { const ts = mk("tspan", {}, e); ts.textContent = ln; });
+    e.setAttribute("font-size", s);
+  }
+  const top = y - ((lines.length - 1) * s * lh) / 2;
+  [...e.childNodes].forEach((ts, i) => { ts.setAttribute("x", x); ts.setAttribute("y", top + i * s * lh); });
+}
+
+function render() {
+  for (const [k, v] of cur) {
+    const t = k.split("|")[0];
+    const e = ensure(k);
+    if (t === "a" || t === "h" || t === "r" || t === "p") {
+      e.setAttribute("cx", v.x.toFixed(1)); e.setAttribute("cy", v.y.toFixed(1)); e.setAttribute("r", Math.max(0, v.r).toFixed(1));
+      e.style.display = v.r < 0.5 ? "none" : "";
+    } else if (t === "la") {
+      const R = Math.max(1, v.r);
+      e._p.setAttribute("d", `M ${v.x - R},${v.y} A ${R},${R} 0 0 1 ${v.x + R},${v.y}`);
+      e._t.setAttribute("font-size", (v.s || 15).toFixed(1));
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "lr") {
+      const r = role(k.slice(3)); if (!r) continue;
+      setLines(e, wrapLines(r.name, v.r, Math.round(v.s || 12)), v.x, v.y, Math.round(v.s || 12));
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 || v.r < 14 ? "none" : "";
+    } else if (t === "lp") {
+      const p = person(k.slice(3)); if (!p) continue;
+      const s = Math.round(v.s || 15);
+      setLines(e, wrapLines(p.name, v.r, s), v.x, v.y - 6, s, 1.1);
+      if (!e._sub) e._sub = mk("text", { class: "lbl-sub" }, $("#gTop"));
+      const n = rolesOf(p.id).length;
+      e._sub.textContent = n === 1 ? "1 Rolle" : n + " Rollen";
+      e._sub.setAttribute("x", v.x); e._sub.setAttribute("y", v.y + (e.childNodes.length * s * 1.1) / 2 + 8);
+      e.style.opacity = e._sub.style.opacity = v.o;
+      e.style.display = e._sub.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "c") {
+      e.setAttribute("transform", `translate(${v.x.toFixed(1)},${v.y.toFixed(1)})`);
+      e.style.opacity = v.o; e.style.display = v.o < 0.02 ? "none" : "";
+    } else if (t === "l") {
+      const l = S.links.find((x) => x.id === k.slice(2));
+      const a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
+      if (!a || !b || v.o < 0.02) { e.style.display = "none"; continue; }
+      e.style.display = ""; e.style.opacity = v.o;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d, bend = Math.min(60, d * 0.18);
+      const mx = (a.x + b.x) / 2 - uy * bend, my = (a.y + b.y) / 2 + ux * bend;
+      const s1 = a.r + 4, s2 = b.r + 6;
+      const p0 = towards(a, mx, my, s1), p1 = towards(b, mx, my, s2);
+      e._p.setAttribute("d", `M ${p0.x},${p0.y} Q ${mx},${my} ${p1.x},${p1.y}`);
+      e._t.setAttribute("x", (p0.x + 2 * mx + p1.x) / 4); e._t.setAttribute("y", (p0.y + 2 * my + p1.y) / 4 - 4);
+    }
+  }
+  renderRings();
+}
+function towards(a, x, y, dist) { const dx = x - a.x, dy = y - a.y, d = Math.hypot(dx, dy) || 1; return { x: +(a.x + (dx / d) * dist).toFixed(1), y: +(a.y + (dy / d) * dist).toFixed(1) }; }
+
+// Farben, Hervorhebung und Abblenden – nur wenn sich etwas ändert
+let focusSet = null; // Set von Schlüsseln, die bei einer Suche hervorgehoben bleiben
+function isDim(k) { return focusSet && !focusSet.has(k); }
+function paintOne(k, e) {
+  const [t, id, id2] = k.split("|");
+  const D = (c) => (isDim(k) ? mix(c, TC.d0, 0.82) : c);
+  if (t === "a") { const a = area(id); if (a) e.setAttribute("fill", D(tint(col(a.color), 0.72))); }
+  else if (t === "h") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), 0.5))); }
+  else if (t === "r") { const r = role(id), a = r && area(r.area); if (a) e.setAttribute("fill", D(tint(roleColor(r), lens === "kreise" ? 0.22 : 0.06))); }
+  else if (t === "p") e.setAttribute("fill", D(TC.d0));
+  else if (t === "la") { const a = area(id); if (a) e._tp.textContent = a.name; e.style.fillOpacity = isDim("a|" + id) ? 0.3 : 1; }
+  else if (t === "lr") e.style.fillOpacity = isDim("r|" + id) ? 0.28 : 1;
+  else if (t === "lp") { e.style.fillOpacity = isDim("p|" + id) ? 0.28 : 1; if (e._sub) e._sub.style.fillOpacity = e.style.fillOpacity; }
+  else if (t === "c") {
+    const p = person(id2), heavy = gapsOn && p && rolesOf(p.id).length >= HEAVY;
+    e._c.setAttribute("fill", TC.d0);
+    e._c.setAttribute("stroke", heavy ? TC.warn : TC.outline);
+    e._c.setAttribute("stroke-width", heavy ? 1.8 : 0.8);
+    e._t.textContent = p ? initials(p.name) : "";
+    e.style.filter = isDim(k) ? "opacity(0.3)" : "";
+    const tt = e.querySelector("title") || mk("title", {}, e); tt.textContent = p ? p.name : "";
+  } else if (t === "l") {
+    const l = S.links.find((x) => x.id === id); if (!l) return;
+    const K = KINDS[l.kind] || KINDS.liefert;
+    const hot = sel && sel.t === "role" && (l.from === sel.id || l.to === sel.id);
+    e._p.setAttribute("stroke", hot ? TC.mark : TC.dim);
+    e._p.setAttribute("stroke-width", K.w * (hot ? 1.4 : 1));
+    e._p.setAttribute("stroke-dasharray", K.dash || "");
+    e._p.setAttribute("marker-end", K.arrow ? (hot ? "url(#arrowHot)" : "url(#arrow)") : "");
+    e._p.setAttribute("vector-effect", "non-scaling-stroke");
+    e._t.textContent = hot ? (l.from === sel.id ? K.label : inverse(l.kind)) : "";
+    e.style.filter = focusSet && !(focusSet.has("r|" + l.from) && focusSet.has("r|" + l.to)) ? "opacity(0.25)" : "";
+  }
+}
+function paint() { for (const [k, e] of els) paintOne(k, e); renderLegend(); }
+
+// Ringe: Auswahl, Lücken, Ziel beim Ziehen
+const ringPool = [];
+let dropKey = null;
+function renderRings() {
+  const want = [];
+  const selKey = sel ? (sel.t === "role" ? "r|" : sel.t === "area" ? "a|" : "p|") + sel.id : null;
+  if (gapsOn) {
+    for (const r of S.roles) if (!r.people.length) want.push({ k: "r|" + r.id, c: TC.warn, dash: "4 4", w: 1.6, pad: 5 });
+    for (const p of S.people) if (rolesOf(p.id).length >= HEAVY || !rolesOf(p.id).length) want.push({ k: "p|" + p.id, c: TC.warn, dash: rolesOf(p.id).length ? "" : "4 4", w: 2, pad: 6 });
+  }
+  if (selKey) {
+    let k = selKey;
+    if (sel.t === "area" && lens === "netz") k = null; // im Netz hat der Bereich keinen Kreis
+    if (sel.t === "person" && lens !== "menschen") for (const r of rolesOf(sel.id)) want.push({ k: `c|${r.id}|${sel.id}`, c: TC.mark, w: 1.6, pad: 3, chip: true });
+    if (k) want.push({ k, c: TC.mark, w: 1.6, pad: 5 });
+  }
+  if (dropKey) want.push({ k: dropKey, c: TC.mark, w: 2.2, pad: 9, dash: "2 5" });
+  while (ringPool.length < want.length) ringPool.push(mk("circle", { fill: "none", "vector-effect": "non-scaling-stroke", "pointer-events": "none" }, $("#gTop")));
+  ringPool.forEach((c, i) => {
+    const w = want[i], v = w && cur.get(w.k);
+    if (!w || !v || (v.r !== undefined && v.r < 1 && !w.chip) || v.o < 0.05) { c.style.display = "none"; return; }
+    c.style.display = "";
+    c.setAttribute("cx", v.x); c.setAttribute("cy", v.y); c.setAttribute("r", (w.chip ? 9.5 : v.r) + w.pad);
+    c.setAttribute("stroke", w.c); c.setAttribute("stroke-width", w.w); c.setAttribute("stroke-dasharray", w.dash || "");
+  });
+}
+
+function renderLegend() {
+  const lg = $("#legend");
+  const on = lens === "netz" || (sel && sel.t === "role" && S.links.some((l) => l.from === sel.id || l.to === sel.id));
+  lg.classList.toggle("on", !!on);
+  lg.innerHTML = Object.values(KINDS).map((K) => `<span><svg width="28" height="10"><path d="M2 5 H24" stroke="currentColor" stroke-width="${K.w}" ${K.dash ? `stroke-dasharray="${K.dash}"` : ""} ${K.arrow ? 'marker-end="url(#arrow)"' : ""}/></svg>${K.label}</span>`).join("");
+}
+
+// ---------- Zoom ----------
+const svg = d3.select("#stage");
+const zoom = d3.zoom().scaleExtent([0.12, 4])
+  .filter((e) => {
+    if (e.type === "wheel" || e.button === 1) return true; // Mausrad und Mitteltaste auch über den Bubbles
+    if (e.type === "dblclick") return false;
+    return (e.type === "touchstart" || e.button === 0) && !(e.target.closest && e.target.closest("[data-k]"));
+  })
+  .on("zoom", (e) => {
+    $("#world").setAttribute("transform", e.transform);
+    setErode();
+  });
+svg.call(zoom).on("dblclick.zoom", null);
+function fit(L, dur = 800) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [k, v] of L || cur) {
+    const t = k.split("|")[0];
+    if (!["a", "h", "r", "p"].includes(t) || !(v.r > 1)) continue;
+    x0 = Math.min(x0, v.x - v.r); y0 = Math.min(y0, v.y - v.r); x1 = Math.max(x1, v.x + v.r); y1 = Math.max(y1, v.y + v.r);
+  }
+  if (!isFinite(x0)) return;
+  const W = innerWidth, H = innerHeight, mobile = W < 760;
+  const top = mobile ? 110 : 70, bottom = mobile ? 100 : 60, right = $("#panel").classList.contains("open") && !mobile ? 380 : 20;
+  const k = Math.min(2, Math.min((W - 20 - right) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+  const tx = 10 + (W - 20 - right) / 2 - k * (x0 + x1) / 2, ty = top + (H - top - bottom) / 2 - k * (y0 + y1) / 2;
+  const T = d3.zoomIdentity.translate(tx, ty).scale(k);
+  (dur ? svg.transition().duration(dur).ease(d3.easeCubicInOut) : svg).call(zoom.transform, T);
+}
+function focusOn(k) {
+  const v = cur.get(k); if (!v) return;
+  const t = d3.zoomTransform(svg.node());
+  const W = innerWidth, H = innerHeight, right = $("#panel").classList.contains("open") && W >= 760 ? 380 : 0;
+  const sx = t.applyX(v.x), sy = t.applyY(v.y);
+  if (sx > 40 && sx < W - right - 40 && sy > 90 && sy < H - 60) return;
+  svg.transition().duration(600).call(zoom.translateTo, v.x + (right / 2) / t.k, v.y, [W / 2, H / 2]);
+}
+function worldPoint(e) { const r = svg.node().getBoundingClientRect(); return d3.zoomTransform(svg.node()).invert([e.clientX - r.left, e.clientY - r.top]); }
+
+// ---------- Ziehen ----------
+let drag = null;
+const hint = $("#hint");
+function setHint(text, live) { hint.textContent = text; hint.classList.toggle("live", !!live); }
+function idleHint() { setHint(LENS_HINT[lens]); }
+
+function entityAt(pt, types, exclude) {
+  // kleinster Kreis unter dem Zeiger gewinnt
+  let best = null;
+  for (const [k, v] of cur) {
+    const t = k.split("|")[0];
+    if (!types.includes(t) || exclude.has(k) || !(v.r > 2)) continue;
+    const d = Math.hypot(pt[0] - v.x, pt[1] - v.y);
+    if (d <= v.r + 4 && (!best || v.r < best.v.r)) best = { k, v };
+  }
+  return best && best.k;
+}
+function ownedKeys(k) {
+  const [t, id] = k.split("|");
+  const out = [k];
+  if (t === "r") { out.push("lr|" + id, "h|" + id); for (const pid of role(id).people) out.push(`c|${id}|${pid}`); }
+  if (t === "p") out.push("lp|" + id);
+  return out;
+}
+function nearestHolder(r, pt) {
+  let best = null, bd = Infinity;
+  for (const pid of r.people) { const v = cur.get("p|" + pid); if (!v) continue; const d = Math.hypot(v.x - pt[0], v.y - pt[1]); if (d < bd) { bd = d; best = pid; } }
+  return best;
+}
+
+function planDrop(pt, shift) {
+  const [t, id, id2] = drag.k.split("|");
+  if (t === "r") {
+    const r = role(id);
+    if (lens === "kreise") {
+      const tk = entityAt(pt, ["a"], new Set());
+      const a = tk && area(tk.split("|")[1]);
+      if (a && a.id !== r.area) return { k: tk, text: `„${r.name}“ in den Bereich ${a.name} verschieben`, run: () => { r.area = a.id; } };
+      return { text: "Loslassen lässt die Rolle, wo sie ist" };
+    }
+    if (lens === "menschen") {
+      const tk = entityAt(pt, ["p"], new Set());
+      const p = tk && person(tk.split("|")[1]);
+      const from = drag.from;
+      if (p && !r.people.includes(p.id)) {
+        if (shift || !from) return { k: tk, text: `${p.name} übernimmt „${r.name}“ zusätzlich`, run: () => r.people.push(p.id) };
+        return { k: tk, text: `„${r.name}“ von ${person(from).name} an ${p.name} übergeben (Shift: teilen)`, run: () => { r.people = r.people.filter((x) => x !== from); r.people.push(p.id); } };
       }
-      return ul;
-    };
-    treeEl.appendChild(mk("h3", "", "Hierarchie"));
-    const roots = [...bubbles.values()].filter((b) => !b.parents.length);
-    if (roots.length) treeEl.appendChild(branch(roots, []));
-    else treeEl.appendChild(mk("p", "empty", "Noch keine Bubbles. Doppelklick auf die Fläche legt eine an."));
-
-    const rootDrop = mk("div", "drop-root", "Hierhin ziehen: eigene Haupt-Bubble · mit Shift auf einen Punkt ziehen: dort andocken");
-    rootDrop.dataset.root = "1";
-    treeEl.appendChild(rootDrop);
-
-    treeEl.appendChild(mk("h3", "", "Angedockt"));
-    const seen = new Set();
-    const groups = [];
-    for (const b of [...bubbles.values()].sort(byPos)) {
-      if (seen.has(b) || !Object.keys(b.docks).length) continue;
-      const g = [...dockGroup(b)].sort(byPos);
-      for (const x of g) seen.add(x);
-      groups.push(g);
+      if (p) return { k: tk, text: `${p.name} hat diese Rolle schon` };
+      if (from) return { text: `${person(from).name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== from); } };
+      return { text: "Auf eine Person ziehen, um die Rolle zu besetzen" };
     }
-    if (!groups.length) treeEl.appendChild(mk("p", "empty", "Nichts. Bubbles aneinander schieben und loslassen dockt sie an."));
-    else {
-      const ul = mk("ul");
-      for (const g of groups) {
-        const li = mk("li", "dock-group");
-        li.appendChild(mk("span", "also", g.map(name).join(" · ")));
-        ul.appendChild(li);
-      }
-      treeEl.appendChild(ul);
+    const tk = entityAt(pt, ["r"], new Set(ownedKeys(drag.k)));
+    const o = tk && role(tk.split("|")[1]);
+    if (o) {
+      const ex = S.links.find((l) => (l.from === r.id && l.to === o.id) || (l.from === o.id && l.to === r.id));
+      if (ex) return { k: tk, text: `${r.name} und ${o.name} sind schon verbunden` };
+      return { k: tk, text: `${r.name} liefert an ${o.name}`, run: () => { const l = { id: uid(), from: r.id, to: o.id, kind: "liefert" }; S.links.push(l); } };
     }
-    treeEl.scrollTop = scroll;
+    return { text: "Rolle hier ablegen" };
   }
+  if (t === "c") {
+    const r = role(id), p = person(id2);
+    const tk = entityAt(pt, ["r"], new Set(["r|" + id]));
+    const o = tk && role(tk.split("|")[1]);
+    if (o && !o.people.includes(p.id)) {
+      if (shift) return { k: tk, text: `${p.name} übernimmt auch „${o.name}“`, run: () => o.people.push(p.id) };
+      return { k: tk, text: `${p.name}: von „${r.name}“ zu „${o.name}“ (Shift: beides)`, run: () => { r.people = r.people.filter((x) => x !== p.id); o.people.push(p.id); } };
+    }
+    if (o) return { k: tk, text: `${p.name} hat „${o.name}“ schon` };
+    const inside = cur.get("r|" + id);
+    if (inside && Math.hypot(pt[0] - inside.x, pt[1] - inside.y) < inside.r) return { text: "Auf eine andere Rolle ziehen" };
+    return { text: `${p.name} gibt „${r.name}“ ab`, run: () => { r.people = r.people.filter((x) => x !== p.id); } };
+  }
+  if (t === "p") return { text: "Person verschieben" };
+  return { text: "" };
+}
 
-  function focusOn(b) {
-    const W = innerWidth;
-    const H = innerHeight;
-    const left = treeEl.hidden ? 0 : treeEl.offsetWidth;
-    const k = view.k;
-    view.x = left + (W - left) / 2 - b.x * k;
-    view.y = H / 2 - 40 - b.y * k;
-    dirty = true;
+const stage = $("#stage");
+stage.addEventListener("pointerdown", (e) => {
+  const tEl = e.target.closest && e.target.closest("[data-k]");
+  if (!tEl || e.button !== 0) return;
+  const k = tEl.dataset.k, t = k.split("|")[0];
+  const pt = worldPoint(e);
+  drag = { k, t, sx: e.clientX, sy: e.clientY, moved: false, pt0: pt, shift: e.shiftKey, plan: null };
+  if (t === "r" && lens === "menschen") drag.from = nearestHolder(role(k.split("|")[1]), pt);
+});
+addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
+  const movable = drag.t === "r" || drag.t === "c" || (drag.t === "p" && lens === "menschen");
+  if (!movable) return;
+  if (!drag.moved) {
+    drag.moved = true; stage.classList.add("dragging");
+    drag.keys = drag.t === "c" ? [drag.k] : ownedKeys(drag.k);
+    drag.start = new Map(drag.keys.map((k) => [k, { ...(cur.get(k) || {}) }]));
+    dragKeys = new Set(drag.keys);
+    // gezogenes Element nach oben
+    const el = els.get(drag.k); if (el) el.parentNode.appendChild(el);
   }
-  treeEl.addEventListener("click", (e) => {
-    const bt = e.target.closest(".node");
-    if (!bt || treeClickBlock) return;
-    const b = bubbles.get(bt.dataset.id);
-    if (!b) return;
-    if (e.shiftKey) toggleSelect(b);
-    else {
-      select(b);
-      if (innerWidth > 640) focusOn(b);
+  const pt = worldPoint(e), dx = pt[0] - drag.pt0[0], dy = pt[1] - drag.pt0[1];
+  for (const k of drag.keys) { const s = drag.start.get(k), c = cur.get(k); if (c && s.x !== undefined) { c.x = s.x + dx; c.y = s.y + dy; } }
+  drag.plan = planDrop(pt, e.shiftKey);
+  dropKey = drag.plan.k || null;
+  setHint(drag.plan.text, true);
+  render();
+});
+function endDrag(e, cancel) {
+  if (!drag) return;
+  const d = drag; drag = null; dropKey = null; dragKeys = new Set(); stage.classList.remove("dragging");
+  if (d.moved) suppressClick = true;
+  if (!d.moved) {
+    if (cancel) return;
+    const [t, id, id2] = d.k.split("|");
+    if (t === "a" || t === "h") select({ t: "area", id: t === "a" ? id : role(id).area });
+    else if (t === "r") select({ t: "role", id });
+    else if (t === "p") select({ t: "person", id });
+    else if (t === "c") select({ t: "person", id: id2 });
+    return;
+  }
+  idleHint();
+  drag = d;
+  const plan = !cancel && planDrop(worldPoint(e), e.shiftKey);
+  drag = null;
+  if (lens !== "kreise" && d.t !== "c") {
+    // gezogene Position als Startpunkt behalten, damit die Karte nicht umspringt
+    const v = cur.get(d.k); if (v) seeds[lens].set(d.k, { x: v.x, y: v.y });
+    layoutVersion++;
+  }
+  if (plan && plan.run) change(plan.run); else relayout();
+}
+let suppressClick = false;
+addEventListener("pointerup", (e) => endDrag(e, false));
+addEventListener("pointercancel", (e) => endDrag(e, true));
+stage.addEventListener("click", (e) => {
+  if (suppressClick) { suppressClick = false; return; }
+  if (!e.target.closest("[data-k]") && sel) select(null);
+});
+
+stage.addEventListener("dblclick", (e) => {
+  const tEl = e.target.closest("[data-k]");
+  const [t, id] = tEl ? tEl.dataset.k.split("|") : [];
+  const pt = worldPoint(e);
+  if (t === "a" || t === "h") return addRole(t === "a" ? id : role(id).area, null, pt);
+  if (t === "p") return addRole(null, id, pt);
+  if (t === "r" || t === "c") return select({ t: "role", id }, true);
+  if (lens === "menschen") return addPerson(pt);
+  return addArea(pt);
+});
+
+// ---------- Anlegen ----------
+function seedAt(k, pt) { if (pt) for (const L of Object.values(seeds)) L.set(k, { x: pt[0], y: pt[1] }); }
+function addArea(pt) {
+  const used = new Set(S.areas.map((a) => a.color));
+  const a = { id: uid(), name: "Neuer Bereich", color: PALETTE.find((c) => !used.has(c)) || PALETTE[S.areas.length % PALETTE.length], purpose: "" };
+  change(() => S.areas.push(a));
+  select({ t: "area", id: a.id }, true);
+}
+function addRole(aid, pid, pt) {
+  const p = pid && person(pid);
+  if (!aid) aid = (p && rolesOf(pid)[0]?.area) || (sel && sel.t === "area" && sel.id) || (sel && sel.t === "role" && role(sel.id)?.area) || S.areas[0].id;
+  const r = { id: uid(), area: aid, name: "Neue Rolle", purpose: "", acc: [], people: pid ? [pid] : [] };
+  seedAt("r|" + r.id, pt);
+  change(() => S.roles.push(r));
+  select({ t: "role", id: r.id }, true);
+}
+function addPerson(pt) {
+  const p = { id: uid(), name: "Neue Person" };
+  seedAt("p|" + p.id, pt);
+  change(() => S.people.push(p));
+  select({ t: "person", id: p.id }, true);
+}
+function removeSel() {
+  if (!sel) return;
+  const s = sel;
+  change(() => {
+    if (s.t === "role") S.roles = S.roles.filter((r) => r.id !== s.id);
+    if (s.t === "person") { S.people = S.people.filter((p) => p.id !== s.id); }
+    if (s.t === "area") {
+      const rest = S.areas.filter((a) => a.id !== s.id);
+      if (!rest.length) return;
+      for (const r of S.roles) if (r.area === s.id) r.area = rest[0].id;
+      S.areas = rest;
     }
   });
-  // Drag in the tree: drop on an entry to put it in there; with Shift it stays
-  // where it is and is linked there as well (one bubble under both). Drop on the
-  // dashed field to make it a main bubble. The canvas follows.
-  let treeDrag = null;
-  let treeClickBlock = false;
-  function treeDropOk(t) {
-    if (!treeDrag || !t) return false;
-    if (t.dataset.root) return treeDrag.b.parents.length > 0;
-    const target = bubbles.get(t.dataset.id);
-    if (!target || subtree(treeDrag.b).has(target)) return false;
-    return treeDrag.shift ? !(target.id in treeDrag.b.docks) : !treeDrag.b.parents.includes(target.id);
+  select(null);
+}
+
+// ---------- Auswahl und Detail ----------
+function select(s, focusName) {
+  sel = s;
+  const was = $("#panel").classList.contains("open");
+  renderPanel();
+  if (lens !== "netz") relayout({ dur: 300 }); // Beziehungen der gewählten Rolle ein-/ausblenden
+  else paint(), render();
+  if (s) {
+    const k = (s.t === "role" ? "r|" : s.t === "area" ? "a|" : "p|") + s.id;
+    const kk = s.t === "person" && lens !== "menschen" ? `c|${rolesOf(s.id)[0]?.id}|${s.id}` : k;
+    setTimeout(() => focusOn(kk), was ? 0 : 60);
   }
-  function treeDragShow() {
-    const d = treeDrag;
-    if (!d || !d.ghost) return;
-    const t = d.target;
-    const ok = treeDropOk(t);
-    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) if (n !== t) n.classList.remove("drop-into", "drop-link");
-    const link = d.shift && ok && !t.dataset.root;
-    if (t) {
-      t.classList.toggle("drop-into", ok && !link);
-      t.classList.toggle("drop-link", link);
-    }
-    const target = ok && !t.dataset.root ? bubbles.get(t.dataset.id) : null;
-    d.ghost.querySelector(".what").textContent = name(d.b);
-    d.ghost.querySelector(".how").textContent = !ok
-      ? d.shift
-        ? "Auf einen Punkt ziehen, um dort anzudocken"
-        : "Auf einen Punkt ziehen · mit Shift: andocken"
-      : t.dataset.root
-        ? "→ eigene Haupt-Bubble"
-        : link
-          ? `⊕ an »${name(target)}« andocken`
-          : `→ in »${name(target)}« · mit Shift: andocken`;
-    d.ghost.classList.toggle("link", link);
-  }
-  treeEl.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    const bt = e.target.closest(".node");
-    const b = bt && bubbles.get(bt.dataset.id);
-    if (!b) return;
-    treeDrag = { b, via: bt.dataset.via || null, x: e.clientX, y: e.clientY, id: e.pointerId, shift: e.shiftKey, ghost: null, target: null };
-  });
-  window.addEventListener("pointermove", (e) => {
-    const d = treeDrag;
-    if (!d || e.pointerId !== d.id) return;
-    if (!d.ghost) {
-      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
-      d.ghost = document.createElement("div");
-      d.ghost.className = "tree-ghost";
-      d.ghost.innerHTML = '<span class="what"></span><span class="how"></span>';
-      document.body.appendChild(d.ghost);
-      treeEl.classList.add("dragging");
-    }
+  if (focusName) setTimeout(() => { const n = $("#panel .name"); if (n) { n.focus(); n.select(); } }, 80);
+}
+
+let editPrev = null;
+const panel = $("#panel");
+panel.addEventListener("focusin", (e) => { if (e.target.matches("input,textarea")) editPrev = snap(); });
+panel.addEventListener("focusout", (e) => {
+  if (e.target.matches("input,textarea") && editPrev && editPrev !== snap()) { undoStack.push(editPrev); redoStack.length = 0; }
+  editPrev = null;
+});
+let liveT = null;
+panel.addEventListener("input", (e) => {
+  const f = e.target.dataset.f; if (!f || !sel) return;
+  const o = sel.t === "role" ? role(sel.id) : sel.t === "area" ? area(sel.id) : person(sel.id);
+  if (!o) return;
+  if (f === "acc") { o.acc[+e.target.dataset.i] = e.target.value; }
+  else o[f] = e.target.value;
+  save();
+  paint(); render();
+  clearTimeout(liveT);
+  liveT = setTimeout(() => { updateGaps(); if (query) runSearch(false); }, 250);
+});
+panel.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.dataset.f === "acc") {
     e.preventDefault();
-    d.shift = e.shiftKey;
-    d.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 10}px)`;
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    d.target = under && treeEl.contains(under) ? under.closest(".node, .drop-root") : null;
-    treeDragShow();
-    // Scroll the list when dragging near its edges
-    const r = treeEl.getBoundingClientRect();
-    if (e.clientY < r.top + 40) treeEl.scrollTop -= 12;
-    else if (e.clientY > r.bottom - 40) treeEl.scrollTop += 12;
-  });
-  for (const k of ["keydown", "keyup"])
-    window.addEventListener(k, (e) => {
-      if (treeDrag && treeDrag.ghost && e.key === "Shift") {
-        treeDrag.shift = k === "keydown";
-        treeDragShow();
-      }
+    const i = +e.target.dataset.i;
+    change(() => role(sel.id).acc.splice(i + 1, 0, ""));
+    setTimeout(() => panel.querySelector(`[data-f="acc"][data-i="${i + 1}"]`)?.focus(), 0);
+  }
+  if (e.key === "Enter" && e.target.classList.contains("name")) { e.preventDefault(); e.target.blur(); }
+  if (e.key === "Escape") e.target.blur();
+});
+panel.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.f === "area" && sel?.t === "role") change(() => { role(sel.id).area = t.value; });
+  if (t.id === "relTarget" && t.value) {
+    const kind = $("#relKind").value, r = role(sel.id);
+    const [dir, oid] = [kind.startsWith("in:") ? "in" : "out", t.value];
+    const k = kind.replace("in:", "");
+    change(() => S.links.push({ id: uid(), from: dir === "in" ? oid : r.id, to: dir === "in" ? r.id : oid, kind: k }));
+  }
+  if (t.dataset.lk) change(() => { const l = S.links.find((x) => x.id === t.dataset.lk); if (l) l.kind = t.value; });
+  if (t.matches("input,textarea")) afterChange({ dur: 400 }); // Größe der Rolle hängt an der Zahl der Aufgaben
+});
+panel.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.close !== undefined) return select(null);
+  if (d.go) { const [t, id] = d.go.split(":"); return select({ t, id }); }
+  if (d.toggle && sel?.t === "role") return change(() => { const r = role(sel.id); r.people = r.people.includes(d.toggle) ? r.people.filter((x) => x !== d.toggle) : [...r.people, d.toggle]; });
+  if (d.toggleRole && sel?.t === "person") return change(() => { const r = role(d.toggleRole); r.people = r.people.includes(sel.id) ? r.people.filter((x) => x !== sel.id) : [...r.people, sel.id]; });
+  if (d.accdel !== undefined) return change(() => role(sel.id).acc.splice(+d.accdel, 1));
+  if (d.accadd !== undefined) { const r = role(sel.id); change(() => r.acc.push("")); return setTimeout(() => panel.querySelector(`[data-f="acc"][data-i="${r.acc.length - 1}"]`)?.focus(), 0); }
+  if (d.reldel) return change(() => { S.links = S.links.filter((l) => l.id !== d.reldel); });
+  if (d.color) return change(() => { area(sel.id).color = d.color; });
+  if (d.newperson !== undefined) { const p = { id: uid(), name: "Neue Person" }; change(() => { S.people.push(p); role(sel.id).people.push(p.id); }); return select({ t: "person", id: p.id }, true); }
+  if (d.newrole !== undefined) return addRole(sel.t === "area" ? sel.id : null, sel.t === "person" ? sel.id : null);
+  if (d.remove !== undefined) return removeSel();
+});
+
+function dupMap() {
+  const m = new Map();
+  for (const r of S.roles) for (const a of r.acc) { const k = norm(a).trim(); if (!k) continue; if (!m.has(k)) m.set(k, new Set()); m.get(k).add(r.id); }
+  return m;
+}
+function renderPanel() {
+  if (!sel) { panel.classList.remove("open"); panel.innerHTML = ""; return; }
+  panel.classList.add("open");
+  const active = document.activeElement && panel.contains(document.activeElement) ? document.activeElement : null;
+  const keep = active && { f: active.dataset.f, i: active.dataset.i, s: active.selectionStart, e: active.selectionEnd, cls: active.className };
+  let h = "";
+  if (sel.t === "role") {
+    const r = role(sel.id), a = area(r.area), dups = dupMap();
+    h += `<div class="kind"><span>Rolle</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(r.name)}" aria-label="Name der Rolle" />
+      <div class="crumb">im Bereich <button data-go="area:${a.id}">${esc(a.name)}</button></div>
+      <section><label class="h">Zweck</label><textarea data-f="purpose" rows="2" placeholder="Wozu gibt es diese Rolle?">${esc(r.purpose)}</textarea></section>
+      <section><label class="h">Verantwortet</label><div class="accs">`;
+    r.acc.forEach((x, i) => {
+      const others = [...(dups.get(norm(x).trim()) || [])].filter((id) => id !== r.id);
+      h += `<div class="acc ${others.length ? "dup" : ""}"><input class="t" data-f="acc" data-i="${i}" value="${esc(x)}" placeholder="Aufgabe" /><button class="del" data-accdel="${i}" aria-label="Entfernen">×</button></div>`;
+      if (others.length) h += `<p class="note">Auch bei ${others.map((id) => `<button class="mini" data-go="role:${id}">${esc(role(id).name)}</button>`).join(" ")}. Wer entscheidet?</p>`;
     });
-  function treeDragEnd() {
-    const d = treeDrag;
-    treeDrag = null;
-    if (!d || !d.ghost) return null;
-    d.ghost.remove();
-    treeEl.classList.remove("dragging");
-    for (const n of treeEl.querySelectorAll(".drop-into, .drop-link")) n.classList.remove("drop-into", "drop-link");
-    treeClickBlock = true;
-    setTimeout(() => (treeClickBlock = false), 0);
-    return d;
-  }
-  window.addEventListener("pointercancel", treeDragEnd);
-  window.addEventListener("pointerup", (e) => {
-    if (!treeDrag || e.pointerId !== treeDrag.id) return;
-    const shift = treeDrag.shift || e.shiftKey;
-    const t = treeDrag.target;
-    const ok = treeDropOk(t);
-    const d = treeDragEnd();
-    if (!d || !ok) return;
-    const { b, via } = d;
-    snapshot();
-    if (t.dataset.root) {
-      // Out of the bubble it was dragged from (or out of all), below its old place
-      const from = bubbles.get(via) || bubbles.get(b.parents[0]);
-      undockAll(b);
-      keepColor(b);
-      b.parents = via ? b.parents.filter((id) => id !== via) : [];
-      if (b.parents.length) {
-        flash(`»${name(b)}« ist aus »${name(from)}« gelöst`);
-      } else if (from) {
-        const top = anchor(from);
-        moveTree(b, top.x - b.x, top.y + top.r + b.r + 60 - b.y);
-        flash(`»${name(b)}« ist jetzt eine eigene Bubble`);
-      }
-    } else {
-      const target = bubbles.get(t.dataset.id);
-      if (shift) {
-        // Dock next to the target, on its level
-        if (!sameLevel(b, target)) undockAll(b);
-        keepColor(b);
-        b.parents = [...target.parents];
-        topo();
-        const ang = Math.random() * Math.PI * 2;
-        const dist = (target.r + b.r) * 0.85;
-        moveTree(b, target.x + Math.cos(ang) * dist - b.x, target.y + Math.sin(ang) * dist - b.y);
-        dockPair(b, target, 0.85);
-        flash(`»${name(b)}« ist an »${name(target)}« angedockt`);
-      } else {
-        undockAll(b);
-        keepColor(b);
-        b.parents = [target.id];
-        moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
-        flash(`»${name(b)}« liegt jetzt in »${name(target)}«`);
-      }
+    h += `</div><p style="margin:8px 0 0"><button class="mini" data-accadd>+ Aufgabe</button></p></section>
+      <section><label class="h">Besetzt von</label>`;
+    if (!r.people.length) h += `<p class="note" style="margin:0 0 8px">Niemand trägt diese Rolle.</p>`;
+    h += `<div class="chips">${S.people.map((p) => `<button class="chip" data-toggle="${p.id}" aria-pressed="${r.people.includes(p.id)}">${esc(p.name)}</button>`).join("")}<button class="chip" data-newperson>+ Person</button></div></section>
+      <section><label class="h">Beziehungen</label>`;
+    const rel = S.links.filter((l) => l.from === r.id || l.to === r.id);
+    if (!rel.length) h += `<p style="margin:0 0 4px;color:var(--ink-dim);font-size:12.5px">Noch keine. Im Netz eine Rolle auf eine andere ziehen oder hier wählen.</p>`;
+    for (const l of rel) {
+      const out = l.from === r.id, o = role(out ? l.to : l.from);
+      const opts = Object.entries(KINDS).map(([k, K]) => `<option value="${k}" ${k === l.kind ? "selected" : ""}>${out ? K.label : inverse(k)}</option>`).join("");
+      h += `<div class="rel"><select class="k" data-lk="${l.id}" style="width:auto;padding:3px 6px;font-size:11.5px">${opts}</select><button class="go" data-go="role:${o.id}">${esc(o.name)}</button><button class="del" data-reldel="${l.id}" aria-label="Entfernen">×</button></div>`;
     }
-    topo();
-    b.vx = 0;
-    b.vy = 0;
-    select(b);
-    needsSave = true;
-    dirty = true;
-    updateChrome();
-  });
-
-  treeEl.addEventListener("dblclick", (e) => {
-    const bt = e.target.closest(".node");
-    const b = bt && bubbles.get(bt.dataset.id);
-    if (b) {
-      focusOn(b);
-      startEdit(b);
-    }
-  });
-
-  // --- Start ----------------------------------------------------------------------
-  buildFilters();
-  buildColors();
-  buildPanel();
-
-  let stored = null;
-  try {
-    stored = JSON.parse(localStorage.getItem(STORE) || "null");
-  } catch (e) {
-    stored = null;
-  }
-  if (stored && Array.isArray(stored.bubbles)) {
-    load(stored.bubbles, false);
-    // Colours from the earlier sets move to the sets that replaced them
-    for (const b of bubbles.values())
-      for (const k in LEGACY) {
-        const i = b.color ? LEGACY[k].colors.indexOf(b.color.toLowerCase()) : -1;
-        if (i >= 0) {
-          b.color = PALETTES[LEGACY[k].to][i];
-          needsSave = true;
-        }
-      }
-    hint(IDLE_HINT);
+    const others = S.roles.filter((o) => o.id !== r.id);
+    h += `<div class="addrel"><select id="relKind">${Object.entries(KINDS).map(([k, K]) => `<option value="${k}">${K.label}</option>`).join("")}<option value="in:liefert">bekommt von</option></select>
+      <select id="relTarget"><option value="">Rolle wählen …</option>${S.areas.map((a2) => `<optgroup label="${esc(a2.name)}">${others.filter((o) => o.area === a2.id).map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</optgroup>`).join("")}</select></div></section>
+      <section><label class="h">Bereich</label><select data-f="area">${S.areas.map((a2) => `<option value="${a2.id}" ${a2.id === r.area ? "selected" : ""}>${esc(a2.name)}</option>`).join("")}</select></section>
+      <button class="danger" data-remove>Rolle löschen</button>`;
+  } else if (sel.t === "area") {
+    const a = area(sel.id), rs = S.roles.filter((r) => r.area === a.id);
+    const ppl = new Set(rs.flatMap((r) => r.people));
+    h += `<div class="kind"><span>Bereich</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(a.name)}" aria-label="Name des Bereichs" />
+      <div class="crumb">${rs.length} ${rs.length === 1 ? "Rolle" : "Rollen"} · ${ppl.size} ${ppl.size === 1 ? "Person" : "Personen"}</div>
+      <section><label class="h">Zweck</label><textarea data-f="purpose" rows="2" placeholder="Wofür ist dieser Bereich da?">${esc(a.purpose)}</textarea></section>
+      <section><label class="h">Farbe</label><div class="swatches">${PALETTE.map((c) => `<button class="sw" data-color="${c}" style="background:${col(c)}" aria-pressed="${c === a.color}" aria-label="Farbe"></button>`).join("")}</div></section>
+      <section><label class="h">Rollen</label><div class="chips">${rs.map((r) => `<button class="chip" data-go="role:${r.id}">${esc(r.name)}${r.people.length ? "" : ' <span style="color:var(--warn)">●</span>'}</button>`).join("")}<button class="chip" data-newrole>+ Rolle</button></div></section>
+      ${S.areas.length > 1 ? `<button class="danger" data-remove>Bereich löschen${rs.length ? " (Rollen wandern in den ersten Bereich)" : ""}</button>` : ""}`;
   } else {
-    sample();
-    hintEl.textContent = "Beispiel zum Ausprobieren: alles lässt sich umschreiben, verschieben, umfärben oder löschen.";
-    setTimeout(() => hint(IDLE_HINT), 6000);
-  }
-  settle();
-  for (const b of bubbles.values()) {
-    b.vx = 0;
-    b.vy = 0;
-  }
-  fit();
-  updateChrome();
-
-  function frame() {
-    const energy = step();
-    if (energy > 0.5) needsSave = true;
-    if (energy > 0.02 || dirty) {
-      render();
-      dirty = false;
+    const p = person(sel.id), rs = rolesOf(p.id), heavy = rs.length >= HEAVY;
+    h += `<div class="kind"><span>Person</span><button class="x" data-close aria-label="Schließen">×</button></div>
+      <input class="name" data-f="name" value="${esc(p.name)}" aria-label="Name" />
+      <div class="crumb">${rs.length} ${rs.length === 1 ? "Rolle" : "Rollen"} in ${new Set(rs.map((r) => r.area)).size} Bereichen</div>
+      <div class="load ${heavy ? "heavy" : ""}"><i style="width:${Math.min(100, (rs.length / (HEAVY + 1)) * 100)}%"></i></div>
+      ${heavy ? `<p class="note">Trägt viele Rollen. Fällt ${esc(p.name.split(" ")[0])} aus, fehlt an ${rs.length} Stellen jemand.</p>` : ""}
+      ${rs.length ? "" : `<p class="note">Hat noch keine Rolle.</p>`}
+      <section><label class="h">Rollen</label>`;
+    for (const a of S.areas) {
+      const ar = S.roles.filter((r) => r.area === a.id);
+      if (!ar.length) continue;
+      h += `<div style="font-size:12px;color:var(--ink-dim);margin:8px 0 5px">${esc(a.name)}</div><div class="chips">${ar.map((r) => `<button class="chip" data-toggle-role="${r.id}" aria-pressed="${r.people.includes(p.id)}"><span class="dot" style="background:${col(a.color)}"></span>${esc(r.name)}</button>`).join("")}</div>`;
     }
-    requestAnimationFrame(frame);
+    h += `<p style="margin:10px 0 0"><button class="mini" data-newrole>+ Neue Rolle für ${esc(p.name.split(" ")[0])}</button></p></section>
+      <section><label class="h">Verantwortet insgesamt</label><div style="font-size:13px;line-height:1.55">${rs.flatMap((r) => r.acc.filter(Boolean).map((x) => `${esc(x)} <span style="color:var(--ink-dim)">· ${esc(r.name)}</span>`)).join("<br>") || '<span style="color:var(--ink-dim)">Noch nichts</span>'}</div></section>
+      <button class="danger" data-remove>Person entfernen</button>`;
   }
-  setInterval(() => {
-    if (needsSave && !drag) save();
-  }, 1000);
-  addEventListener("pagehide", () => {
-    if (needsSave) save();
-  });
-  requestAnimationFrame(frame);
-})();
+  panel.innerHTML = h;
+  if (keep && keep.f) {
+    const el = panel.querySelector(`[data-f="${keep.f}"]${keep.i !== undefined ? `[data-i="${keep.i}"]` : ""}`);
+    if (el) { el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch (e) {} }
+  }
+}
+function inverse(k) { return { liefert: "bekommt von", zusammen: "arbeitet mit", unterstuetzt: "wird unterstützt von" }[k]; }
+
+// ---------- Suche: Wer ist zuständig? ----------
+const qEl = $("#q"), resEl = $("#results");
+let results = [], activeRes = 0;
+function runSearch(open = true) {
+  query = qEl.value.trim();
+  if (!query) { focusSet = null; results = []; resEl.classList.remove("open"); paint(); return; }
+  const toks = norm(query).split(/\s+/).filter((t) => t.length > 1 || query.length === 1);
+  const out = [];
+  for (const r of S.roles) {
+    const a = area(r.area), ppl = r.people.map(person);
+    const hay = [r.name, r.purpose, a.name, ...r.acc, ...ppl.map((p) => p.name)].map(norm).join(" · ");
+    if (!toks.every((t) => hay.includes(t))) continue;
+    let score = 0;
+    const accHit = r.acc.filter((x) => toks.some((t) => norm(x).includes(t)));
+    if (toks.some((t) => norm(r.name).includes(t))) score += 3;
+    score += accHit.length * 2;
+    out.push({ t: "role", r, a, ppl, accHit, score });
+  }
+  for (const p of S.people) if (toks.every((t) => norm(p.name).includes(t))) out.push({ t: "person", p, score: 4 });
+  out.sort((x, y) => y.score - x.score);
+  results = out.slice(0, 8);
+  activeRes = 0;
+  focusSet = new Set();
+  for (const x of results) {
+    if (x.t === "role") { focusSet.add("r|" + x.r.id); focusSet.add("h|" + x.r.id); focusSet.add("a|" + x.a.id); x.ppl.forEach((p) => { focusSet.add("p|" + p.id); focusSet.add(`c|${x.r.id}|${p.id}`); }); }
+    else { focusSet.add("p|" + x.p.id); for (const r of rolesOf(x.p.id)) { focusSet.add("r|" + r.id); focusSet.add("h|" + r.id); focusSet.add("a|" + r.area); focusSet.add(`c|${r.id}|${x.p.id}`); } }
+  }
+  paint(); render();
+  const hl = (s) => { let h = esc(s); for (const t of toks) { const i = norm(s).indexOf(t); if (i >= 0) { h = esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, i + t.length)) + "</mark>" + esc(s.slice(i + t.length)); break; } } return h; };
+  resEl.innerHTML = results.length ? results.map((x, i) => x.t === "role"
+    ? `<button class="res ${i === 0 ? "active" : ""}" data-i="${i}"><span class="path">${esc(x.a.name)}</span><b>${hl(x.r.name)}</b>${x.accHit.slice(0, 2).map((a) => `<span class="acc">${hl(a)}</span>`).join("")}<span class="who">${x.ppl.length ? "→ " + x.ppl.map((p) => esc(p.name)).join(", ") : '<span class="none">→ niemand zuständig</span>'}</span></button>`
+    : `<button class="res ${i === 0 ? "active" : ""}" data-i="${i}"><span class="path">Person</span><b>${hl(x.p.name)}</b><span class="who">${rolesOf(x.p.id).map((r) => esc(r.name)).join(", ") || "keine Rolle"}</span></button>`).join("")
+    : `<div class="res-empty">Dafür ist noch niemand zuständig. Das ist eine Lücke.</div>`;
+  if (open) resEl.classList.add("open");
+}
+function pickResult(i) {
+  const x = results[i]; if (!x) return;
+  resEl.classList.remove("open");
+  select(x.t === "role" ? { t: "role", id: x.r.id } : { t: "person", id: x.p.id });
+}
+qEl.addEventListener("input", () => runSearch(true));
+qEl.addEventListener("focus", () => { if (query) resEl.classList.add("open"); });
+qEl.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); if (!results.length) return;
+    activeRes = (activeRes + (e.key === "ArrowDown" ? 1 : -1) + results.length) % results.length;
+    resEl.querySelectorAll(".res").forEach((b, i) => b.classList.toggle("active", i === activeRes));
+  } else if (e.key === "Enter") pickResult(activeRes);
+  else if (e.key === "Escape") { qEl.value = ""; runSearch(); qEl.blur(); }
+});
+resEl.addEventListener("click", (e) => { const b = e.target.closest(".res"); if (b) pickResult(+b.dataset.i); });
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest(".search")) resEl.classList.remove("open");
+  for (const [btn, pop] of [["#gapsBtn", "#gapsPop"], ["#addBtn", "#addPop"], ["#menuBtn", "#menuPop"]])
+    if (!e.target.closest(btn) && !e.target.closest(pop)) $(pop).classList.remove("open");
+});
+
+// ---------- Lücken ----------
+function gapList() {
+  const free = S.roles.filter((r) => !r.people.length);
+  const heavy = S.people.filter((p) => rolesOf(p.id).length >= HEAVY);
+  const idle = S.people.filter((p) => !rolesOf(p.id).length);
+  const dup = [...dupMap()].filter(([, s]) => s.size > 1);
+  return { free, heavy, idle, dup };
+}
+function updateGaps() {
+  const g = gapList(), n = g.free.length + g.heavy.length + g.idle.length + g.dup.length;
+  $("#gapCount").textContent = n;
+  $("#gapCount").style.display = n ? "" : "none";
+  $("#gapsBtn").setAttribute("aria-pressed", gapsOn);
+  const pop = $("#gapsPop");
+  const item = (go, label) => `<button class="item" data-go="${go}">${label}</button>`;
+  let h = `<button class="item" data-gaps-toggle style="font-weight:600">${gapsOn ? "Markierung ausblenden" : "Auf der Karte markieren"}</button>`;
+  if (g.free.length) h += `<h4>Rollen ohne Person</h4>` + g.free.map((r) => item("role:" + r.id, `${esc(r.name)} <span style="color:var(--ink-dim)">· ${esc(area(r.area).name)}</span>`)).join("");
+  if (g.dup.length) h += `<h4>Doppelt verantwortet</h4>` + g.dup.map(([key, s]) => { const rs = [...s].map(role); const a = rs[0].acc.find((x) => norm(x).trim() === key); return item("role:" + rs[0].id, `${esc(a)} <span style="color:var(--ink-dim)">· ${rs.map((r) => esc(r.name)).join(" und ")}</span>`); }).join("");
+  if (g.heavy.length) h += `<h4>Viele Rollen auf einer Person</h4>` + g.heavy.map((p) => item("person:" + p.id, `${esc(p.name)} <span style="color:var(--ink-dim)">· ${rolesOf(p.id).length} Rollen</span>`)).join("");
+  if (g.idle.length) h += `<h4>Ohne Rolle</h4>` + g.idle.map((p) => item("person:" + p.id, esc(p.name))).join("");
+  if (!n) h += `<div class="ok">Keine Lücken gefunden. Jede Rolle ist besetzt.</div>`;
+  pop.innerHTML = h;
+}
+$("#gapsBtn").addEventListener("click", () => { $("#gapsPop").classList.toggle("open"); });
+$("#gapsPop").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.gapsToggle !== undefined) { gapsOn = !gapsOn; writeLS("gefuege.gaps", gapsOn ? "1" : "0"); updateGaps(); paint(); render(); return; }
+  if (b.dataset.go) { const [t, id] = b.dataset.go.split(":"); if (!gapsOn) { gapsOn = true; updateGaps(); paint(); } select({ t, id }); }
+});
+
+// ---------- Linsen, Menü, Tastatur ----------
+function setLens(l, fitView = true) {
+  lens = l; writeLS("gefuege.lens", l);
+  document.querySelectorAll(".lenses button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lens === l));
+  idleHint();
+  relayout({ fit: fitView, dur: 900 });
+}
+document.querySelectorAll(".lenses button").forEach((b) => b.addEventListener("click", () => setLens(b.dataset.lens)));
+$("#addBtn").addEventListener("click", () => $("#addPop").classList.toggle("open"));
+$("#addPop").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-add]"); if (!b) return;
+  $("#addPop").classList.remove("open");
+  ({ area: () => addArea(), role: () => addRole(), person: () => addPerson() })[b.dataset.add]();
+});
+$("#menuBtn").addEventListener("click", () => $("#menuPop").classList.toggle("open"));
+$("#menuPop").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-m]"); if (!b) return;
+  const m = b.dataset.m;
+  // Ersetzen braucht einen zweiten Klick (keine Browser-Dialoge)
+  if ((m === "example" || m === "clear") && !b.dataset.armed) {
+    b.dataset.armed = b.textContent; b.textContent = "Wirklich? Nochmal klicken (Rückgängig geht)";
+    setTimeout(() => { if (b.dataset.armed) { b.textContent = b.dataset.armed; delete b.dataset.armed; } }, 4000);
+    return;
+  }
+  if (b.dataset.armed) { b.textContent = b.dataset.armed; delete b.dataset.armed; }
+  $("#menuPop").classList.remove("open");
+  if (m === "fit") fit();
+  if (m === "export") {
+    const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "notizen.json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  if (m === "import") $("#file").click();
+  if (m === "example") { change(() => { S = example(); }); seeds.menschen.clear(); seeds.netz.clear(); select(null); relayout({ fit: true }); }
+  if (m === "clear") { change(() => { S = emptyModel(); }); select(null); relayout({ fit: true }); }
+});
+$("#file").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.areas) || !Array.isArray(d.roles)) throw new Error();
+    change(() => { S = { areas: d.areas, roles: d.roles, people: d.people || [], links: d.links || [] }; });
+    select(null); relayout({ fit: true });
+  } catch (err) { setHint("Diese Datei ließ sich nicht lesen. Erwartet wird eine JSON-Datei, die mit „Als Datei sichern“ entstanden ist.", true); }
+  e.target.value = "";
+});
+function setTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  else document.documentElement.removeAttribute("data-theme");
+  writeLS("gefuege.theme", t);
+  readTheme(); paint(); render(); renderSettings();
+}
+$("#themeBtn").addEventListener("click", () => setTheme(TC.dark ? "light" : "dark"));
+
+// ---------- Einstellungen ----------
+const SLIDERS = [
+  ["Farben", [
+    ["blend", "Farbverlauf", 0, 45, 1, (v) => v],
+    ["sat", "Farbstärke", 0.4, 1.8, 0.05, (v) => Math.round(v * 100) + "%"],
+    ["opacity", "Deckkraft", 0.4, 1, 0.05, (v) => Math.round(v * 100) + "%"],
+  ]],
+  ["Form", [
+    ["goo", "Verschmelzen", 2, 18, 0.5, (v) => v],
+    ["gap", "Abstand der Rollen in Bereichen", 0, 40, 1, (v) => v],
+    ["shade", "Plastisch", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
+    ["line", "Konturstärke", 0.3, 3, 0.1, (v) => v.toFixed(1)],
+  ]],
+];
+function renderSettings() {
+  const theme = readLS("gefuege.theme") || "system";
+  const seg = (attr, items, cur) => `<div class="seg">${items.map(([v, label, extra]) => `<button data-${attr}="${v}" aria-pressed="${v === cur}">${extra || ""}${label}</button>`).join("")}</div>`;
+  let h = `<h4>Ansicht</h4>` + seg("theme", [["light", "Hell"], ["dark", "Dunkel"], ["system", "Wie System"]], theme);
+  h += `<h4>Farbset</h4>` + seg("set", Object.entries(SETS).map(([k, v]) => [k, v.name, `<span class="sws">${v.c.slice(0, 4).map((c) => `<i style="background:${c}"></i>`).join("")}</span>`]), T.set);
+  for (const [group, list] of SLIDERS) {
+    h += `<h4>${group}</h4>`;
+    for (const [k, label, min, max, step, fmt] of list) {
+      const dis = k === "line" && !T.outline ? "disabled" : "";
+      h += `<label class="set"><span>${label}</span><output id="o-${k}">${fmt(T[k])}</output><input id="s-${k}" type="range" min="${min}" max="${max}" step="${step}" value="${T[k]}" data-set-k="${k}" ${dis} /></label>`;
+      if (k === "shade") h += `<div class="sw-row"><span>Kontur</span><input id="s-outline" class="switch" type="checkbox" data-set-b="outline" ${T.outline ? "checked" : ""} /></div>`;
+    }
+  }
+  h += `<h4>Schrift der Bubbles</h4>` + seg("font", [["text", "Manrope"], ["display", "Playfair"], ["mono", "DM Mono"]], T.font);
+  h += `<div class="sw-row"><span>Punkte im Hintergrund</span><input id="s-dots" class="switch" type="checkbox" data-set-b="dots" ${T.dots ? "checked" : ""} /></div>`;
+  h += `<button class="item" data-reset-look>Aussehen zurücksetzen</button>`;
+  $("#settings").innerHTML = h;
+}
+function applyLook(rebuild = true) {
+  writeLS("notizen.look", JSON.stringify(T));
+  document.documentElement.style.setProperty("--label-font", `var(--${T.font === "display" ? "display" : T.font === "mono" ? "mono" : "text"})`);
+  document.body.classList.toggle("nodots", !T.dots);
+  if (rebuild) buildFilter();
+  for (const e of els.values()) e._key = null;
+}
+let gapT = null;
+$("#settings").addEventListener("input", (e) => {
+  const k = e.target.dataset.setK;
+  if (k) {
+    T[k] = +e.target.value;
+    const spec = SLIDERS.flatMap((g) => g[1]).find((x) => x[0] === k);
+    $("#o-" + k).textContent = spec[5](T[k]);
+    applyLook();
+    if (k === "gap") { clearTimeout(gapT); gapT = setTimeout(() => relayout({ dur: 400 }), 60); }
+    else render();
+  }
+  const b = e.target.dataset.setB;
+  if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); render(); }
+});
+$("#settings").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.theme) return setTheme(b.dataset.theme);
+  if (b.dataset.set) { T.set = b.dataset.set; applyLook(); paint(); render(); renderSettings(); renderPanel(); return; }
+  if (b.dataset.font) { T.font = b.dataset.font; applyLook(false); render(); renderSettings(); return; }
+  if (b.dataset.resetLook !== undefined) { T = { ...DEFAULTS }; applyLook(); paint(); relayout({ dur: 400 }); renderSettings(); renderPanel(); }
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readTheme(); paint(); render(); renderSettings(); });
+$("#undoBtn").addEventListener("click", doUndo);
+$("#redoBtn").addEventListener("click", doRedo);
+document.addEventListener("keydown", (e) => {
+  const typing = e.target.matches && e.target.matches("input,textarea,select");
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === "z" && !typing) { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
+  if (mod && e.key.toLowerCase() === "y" && !typing) { e.preventDefault(); doRedo(); return; }
+  if (typing) return;
+  if (e.key === "/") { e.preventDefault(); qEl.focus(); }
+  else if (e.key === "1" || e.key === "2" || e.key === "3") setLens(["kreise", "menschen", "netz"][+e.key - 1]);
+  else if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); removeSel(); }
+  else if (e.key === "Escape") { if (query) { qEl.value = ""; runSearch(); } else select(null); }
+});
+
+// ---------- Start ----------
+const th = readLS("gefuege.theme");
+if (th === "light" || th === "dark") document.documentElement.setAttribute("data-theme", th);
+applyLook(false);
+readTheme();
+renderSettings();
+document.querySelectorAll(".lenses button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lens === lens));
+clean();
+save();
+updateGaps();
+idleHint();
+relayout({ instant: true, fit: true });
+document.fonts && document.fonts.ready.then(() => { for (const e of els.values()) e._key = null; render(); });
 </script>
 </body>
 </html>
