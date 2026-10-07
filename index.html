@@ -232,6 +232,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outli
 }
 #tree .txt { min-width: 0; overflow-wrap: anywhere; }
 #tree .also { display: block; font-size: 11px; color: var(--ink-dim); }
+#panel .version { margin: 12px 0 4px; font-size: 11px; opacity: 0.55; }
 #tree .node[aria-current="true"] .also { color: inherit; opacity: 0.7; }
 #tree .empty { margin: 0.3rem 0.4rem; color: var(--ink-dim); }
 
@@ -519,6 +520,7 @@ input.switch:checked::after { transform: translateX(16px); }
   <div class="tune-actions">
     <button type="button" id="tune-reset">Auf Standard zurücksetzen</button>
   </div>
+  <p class="version">Stand 07.10.2026, 13:15</p>
 </aside>
 
 <div id="dock">
@@ -622,9 +624,9 @@ input.switch:checked::after { transform: translateX(16px); }
   const SPEC = [
     ["Farben"],
     ["palette", "Farbset", [["pastell", "Pastell"], ["kueste", "Küste"], ["mono", "Mono"]]],
-    ["flow", "Farbverlauf", 0, 1, 0.01],
+    ["flow", "Reichweite des Farbverlaufs", 0, 1, 0.01],
     ["saturation", "Farbstärke", 0, 2, 0.05],
-    ["opacity", "Deckkraft", 0.2, 1, 0.01],
+    ["opacity", "Deckkraft der Füllung", 0.2, 1, 0.01],
     ["ink", "Schriftfarbe"],
     ["Schrift"],
     ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
