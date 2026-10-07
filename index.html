@@ -635,17 +635,19 @@ function layoutKreise(L) {
   const pin = posOf("kreise").a, shift = new Map();
   for (const n of root.children || []) { const q = pin[n.data.a.id]; if (q) shift.set(n.data.a.id, [q[0] - (n.x - side / 2), q[1] - (n.y - side / 2)]); }
   // nichts darf sich überschneiden: Bereiche (mit Platz für den Titel) sanft auseinanderschieben
-  const tops = (root.children || []).map((n) => { const sh = shift.get(n.data.a.id) || [0, 0]; return { id: n.data.a.id, x: n.x + sh[0], y: n.y + sh[1], r: n.r + 34 }; });
+  // selbst abgelegte Bereiche bleiben, wo sie sind (angedockt verschmelzen sie), nur die übrigen weichen aus
+  const tops = (root.children || []).map((n) => { const sh = shift.get(n.data.a.id) || [0, 0]; return { id: n.data.a.id, x: n.x + sh[0], y: n.y + sh[1], r: n.r + 34, fixed: !!pin[n.data.a.id] }; });
   for (let it = 0; it < 80; it++) {
     let moved = false;
     for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) {
       const A = tops[i], B = tops[j];
+      if (A.fixed && B.fixed) continue;
       let dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
       const need = A.r + B.r + 24;
       if (d >= need) continue;
       if (d < 0.01) { dx = 1; dy = 0; d = 1; }
-      const push = (need - d) / 2 + 0.5;
-      A.x -= (dx / d) * push; A.y -= (dy / d) * push; B.x += (dx / d) * push; B.y += (dy / d) * push;
+      const push = need - d + 0.5, wa = A.fixed ? 0 : B.fixed ? 1 : 0.5, wb = 1 - wa;
+      A.x -= (dx / d) * push * wa; A.y -= (dy / d) * push * wa; B.x += (dx / d) * push * wb; B.y += (dy / d) * push * wb;
       moved = true;
     }
     if (!moved) break;
@@ -1248,7 +1250,18 @@ function endDrag(e, cancel) {
   if (d.t === "a") {
     // Position merken, damit die eigene Anordnung bleibt (auch nach dem Neuladen)
     const id = d.k.split("|")[1], v = cur.get((lens === "netz" ? "la|" : "a|") + id);
-    if (v) { const pos = posOf(lens); change(() => { pos.a[id] = [Math.round(v.x), Math.round(v.y)]; }, { dur: 450 }); return; }
+    if (v) {
+      const pos = posOf(lens);
+      change(() => {
+        pos.a[id] = [Math.round(v.x), Math.round(v.y)];
+        // was man andockt, bleibt angedockt: berührte Bereiche werden mit festgehalten
+        if (lens === "kreise") for (const o of S.areas) {
+          const w = cur.get("a|" + o.id);
+          if (o.id !== id && w && Math.hypot(w.x - v.x, w.y - v.y) < w.r + v.r + 30) pos.a[o.id] = [Math.round(w.x), Math.round(w.y)];
+        }
+      }, { dur: 450 });
+      return;
+    }
   }
   drag = d;
   const plan = !cancel && planDrop(worldPoint(e), e.shiftKey);
