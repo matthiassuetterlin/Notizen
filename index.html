@@ -343,6 +343,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line)
 
 <svg id="stage" aria-label="Karte der Zuständigkeiten">
   <defs>
+    <filter id="flightBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur id="fxFly" stdDeviation="3" /></filter>
     <filter id="goo" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"></filter>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,1 L9,5 L0,9" fill="none" stroke="#888" stroke-width="1.4" />
@@ -438,7 +439,7 @@ const SETS = {
   ci: { name: "CI", c: ["#FEE7C0", "#641DFF", "#7B5CFF", "#C0FEC8", "#ECFEC0", "#FEC0E1", "#C0FEFB", "#CECCFF"] },
 };
 // Werkseinstellung = Matthias' Aussehen vom 07.10.2026; zugleich der erste Speicherplatz 01
-const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1 };
+const DEFAULTS = { set: "pastell", blend: 15, goo: 10, sat: 1.15, opacity: 1, shade: 0.45, outline: true, line: 1, lineColor: "auto", edge: 1, gap: 40, font: "display", dots: true, fit: 1, flight: true, fly: 0.5 };
 const DEFAULT_THEME = "light";
 // Gespeicherte Einstellungen: jeder Eintrag trägt seinen Namen (label) fest mit sich, auch beim Verschieben; def = Index des Default-Eintrags
 // Vorgabe für neue Besucher: Matthias' sieben Einstellungen vom 07.10.2026, Start mit „Dark & Fruity“
@@ -678,6 +679,7 @@ function setErode() {
   const set = (id, a, v) => { const n = $(id); if (n) n.setAttribute(a, (v / k).toFixed(2)); };
   set("#fxLit", "stdDeviation", 7); set("#fxHi", "stdDeviation", 5.5);
   set("#fxSh", "stdDeviation", 3 + 6 * T.shade); set("#fxOff", "dy", 2 + 5 * T.shade);
+  set("#fxFly", "stdDeviation", 2 + 5 * (T.fly ?? 0.5));
   const b = $("#ringBlur"); if (b) b.setAttribute("stdDeviation", ((1 - (T.edge ?? 1)) * (1 + T.line) * 1.6 / k).toFixed(2));
 }
 function hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
@@ -903,6 +905,7 @@ function ensure(k) {
     if (t === "h") G.h.insertBefore(e, G.h.firstChild);
   } else if (t === "l") {
     e = mk("g", {}, G.l);
+    e._s = mk("path", { class: "lnk-sh", fill: "none", "stroke-linecap": "round", "pointer-events": "none", filter: "url(#flightBlur)" }, e);
     e._hit = mk("path", { fill: "none", stroke: "transparent", "stroke-width": 16, "vector-effect": "non-scaling-stroke", "pointer-events": "stroke", "data-link": k.slice(2) }, e);
     e._p = mk("path", { fill: "none", "marker-end": "url(#arrow)", "stroke-linecap": "round", "pointer-events": "none" }, e);
     e._d0 = mk("circle", { r: 3, "pointer-events": "none" }, e);
@@ -1025,8 +1028,9 @@ function render() {
       const a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
       if (!a || !b || v.o < 0.02) { e.style.display = "none"; continue; }
       e.style.display = ""; e.style.opacity = v.o;
-      const w = wirePath(a, b, 3, 7);
+      const w = linkGeom(a, b);
       e._p.setAttribute("d", w.d); e._hit.setAttribute("d", w.d);
+      if (w.ds) { e._s.setAttribute("d", w.ds); e._s.style.display = ""; } else e._s.style.display = "none";
       e._d0.setAttribute("cx", w.p0.x); e._d0.setAttribute("cy", w.p0.y);
       e._t.setAttribute("x", w.m.x); e._t.setAttribute("y", w.m.y - 6);
       e._mid = w.m;
@@ -1116,6 +1120,24 @@ $("#flagsPop").addEventListener("click", (e) => {
 });
 function showNotes() { setTimeout(() => panel.querySelector(".notes")?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 120); }
 // Kabel wie in Node-Editoren: verlässt die Bubble leicht seitlich und schwingt weich hinüber
+// Flugroute: Bogen von Bubble zu Bubble, über allem; Höhe wächst mit Abstand und Regler „Flughöhe“
+function flightPath(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+  // Bogen zeigt immer nach oben (wie Flugrouten auf der Karte)
+  let nx = uy, ny = -ux; if (ny > 0 || (ny === 0 && nx < 0)) { nx = -nx; ny = -ny; }
+  const h = d * (0.12 + 0.38 * (T.fly ?? 0.5));
+  const ia = Math.min(a.r * 0.55, d * 0.25), ib = Math.min(b.r * 0.55, d * 0.25);
+  const p0 = { x: a.x + ux * ia + nx * ia * 0.6, y: a.y + uy * ia + ny * ia * 0.6 };
+  const p1 = { x: b.x - ux * ib + nx * ib * 0.6, y: b.y - uy * ib + ny * ib * 0.6 };
+  const c = { x: (p0.x + p1.x) / 2 + nx * h, y: (p0.y + p1.y) / 2 + ny * h };
+  // Schatten: flacherer Bogen, nach unten versetzt, als läge er auf der Fläche
+  const sh = 0.7, off = 6 + h * 0.16;
+  const cs = { x: (p0.x + p1.x) / 2 + nx * h * sh, y: (p0.y + p1.y) / 2 + ny * h * sh + off };
+  const m = { x: 0.25 * p0.x + 0.5 * c.x + 0.25 * p1.x, y: 0.25 * p0.y + 0.5 * c.y + 0.25 * p1.y };
+  const f = (v) => v.toFixed(1);
+  return { d: `M ${f(p0.x)},${f(p0.y)} Q ${f(c.x)},${f(c.y)} ${f(p1.x)},${f(p1.y)}`, ds: `M ${f(p0.x)},${f(p0.y + 3)} Q ${f(cs.x)},${f(cs.y)} ${f(p1.x)},${f(p1.y + 3)}`, p0, p1, m };
+}
+const linkGeom = (a, b) => (T.flight ? flightPath(a, b) : wirePath(a, b, 3, 7));
 function wirePath(a, b, padA, padB) {
   const ang = Math.atan2(b.y - a.y, b.x - a.x), d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
   const gap = Math.max(1, d - a.r - (b.r || 0)), tw = 0.32 * Math.min(1, gap / 220);
@@ -1163,7 +1185,10 @@ function paintOne(k, e) {
     hot = hot || (linkPopId === l.id);
     e._p.setAttribute("stroke", hot ? TC.accent : TC.dim);
     e._d0.setAttribute("fill", hot ? TC.accent : TC.dim);
-    e._p.setAttribute("stroke-width", K.w * (hot ? 1.5 : 1.1));
+    e._p.setAttribute("stroke-width", K.w * (hot ? 1.5 : 1.1) * (T.flight ? 1.25 : 1));
+    e._s.setAttribute("stroke-width", K.w * 2.4); e._s.setAttribute("vector-effect", "non-scaling-stroke");
+    e._s.setAttribute("stroke", TC.dark ? "#000" : "#2c2824");
+    e._s.setAttribute("stroke-opacity", (TC.dark ? 0.6 : 0.2) * (0.6 + 0.8 * (T.fly ?? 0.5)));
     e._p.setAttribute("stroke-dasharray", K.dash || "");
     e._p.setAttribute("marker-end", K.arrow ? (hot ? "url(#arrowHot)" : "url(#arrow)") : "");
     e._p.setAttribute("vector-effect", "non-scaling-stroke");
@@ -1517,7 +1542,7 @@ function renderLinkPop() {
 function placeLinkPop() {
   const l = S.links.find((x) => x.id === linkPopId), a = l && cur.get("r|" + l.from), b = l && cur.get("r|" + l.to);
   if (!a || !b) return;
-  const m = wirePath(a, b, 3, 7).m;
+  const m = linkGeom(a, b).m;
   const t = d3.zoomTransform(stage);
   const x = Math.max(linkPop.offsetWidth / 2 + 8, Math.min(innerWidth - linkPop.offsetWidth / 2 - 8, t.applyX(m.x)));
   const y = Math.max(linkPop.offsetHeight + 70, t.applyY(m.y));
@@ -1978,6 +2003,9 @@ const SLIDERS = [
     ["line", "Konturstärke", 0.3, 3, 0.1, (v) => v.toFixed(1)],
     ["edge", "Konturschärfe", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
   ]],
+  ["Verbindungen", [
+    ["fly", "Flughöhe", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
+  ]],
   ["Schrift der Bubbles", [
     ["fit", "Schrift in der Bubble halten", 0, 1, 0.05, (v) => Math.round(v * 100) + "%"],
   ]],
@@ -1997,8 +2025,9 @@ function renderSettings() {
   for (const [group, list] of SLIDERS) {
     h += `<h4>${group}</h4>`;
     if (group === "Schrift der Bubbles") h += seg("font", [["text", "Manrope"], ["display", "Playfair"], ["grotesk", "Space Grotesk"]], T.font);
+    if (group === "Verbindungen") h += `<div class="sw-row"><span>Als Flugrouten über allem</span><input id="s-flight" class="switch" type="checkbox" data-set-b="flight" ${T.flight ? "checked" : ""} /></div>`;
     for (const [k, label, min, max, step, fmt] of list) {
-      const dis = (k === "line" || k === "edge") && !T.outline ? "disabled" : "";
+      const dis = ((k === "line" || k === "edge") && !T.outline) || (k === "fly" && !T.flight) ? "disabled" : "";
       h += `<label class="set"><span>${label}</span><output id="o-${k}">${fmt(T[k])}</output><input id="s-${k}" type="range" min="${min}" max="${max}" step="${step}" value="${T[k]}" data-set-k="${k}" ${dis} /></label>`;
       if (k === "shade") {
         const custom = /^#[0-9a-f]{6}$/i.test(T.lineColor);
@@ -2017,6 +2046,8 @@ function applyLook(rebuild = true) {
   document.documentElement.style.setProperty("--label-font", `var(--${fam})`);
   labelFam = getComputedStyle(document.documentElement).getPropertyValue("--" + fam).trim();
   document.body.classList.toggle("nodots", !T.dots);
+  // Flugrouten liegen über Bubbles und Schrift, sonst zwischen Bereichen und Rollen
+  const gl = $("#gLink"); if (gl) (T.flight ? $("#gFlags") : $("#gRole")).before(gl);
   if (rebuild) buildFilter();
   for (const e of els.values()) e._key = null;
 }
@@ -2032,7 +2063,7 @@ $("#settings").addEventListener("input", (e) => {
     else render();
   }
   const b = e.target.dataset.setB;
-  if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); render(); }
+  if (b) { T[b] = e.target.checked; applyLook(); renderSettings(); if (b === "flight") paint(); render(); }
 });
 // gespeicherte Einstellungen per Ziehen umsortieren; Namen und Default-Haken bleiben am Eintrag
 let presetDrag = null, presetDragged = false, presetPicked = null, presetPickedAt = 0;
