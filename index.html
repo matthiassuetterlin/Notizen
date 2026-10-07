@@ -583,17 +583,29 @@ input.switch:checked::after { transform: translateX(16px); }
     font: 1, // text size
     grow: 1, // how much bigger the text of bubbles with much inside gets
     round: true, // round bubbles, or bubbles that take the shape of what lies inside
-    merge: 0.42, // how readily bubbles melt together, and how far colours flow
+    roundness: 0.35, // without round bubbles: 0 = hugs its content, 1 = nearly round again
+    merge: 0.42, // how readily bubbles melt together
+    flow: 0.4, // how far colours and grey tones run into each other
     line: 4, // contour width, 0 = none
     shade: 0, // 3D: light and shadow (0 = flat)
+    scale: 1, // size of empty bubbles
+    inner: 1, // room between a bubble's contour and what lies inside
+    spacing: 1, // distance between bubbles
+    pull: 1, // how strongly bubbles are drawn into the middle of the bubble they sit in
+    push: 1, // how firmly bubbles push each other away
     glide: 0.34, // how far a bubble glides when let go
   };
   // Values chosen by Matthias (07.10.2026) that stay fixed
-  const FIXED = { attract: 0.006, repel: 0.13, gap: 2.1, sharp: 60, size: 1.05, pad: 3, textPad: 1, dots: true, outlineColor: "" };
+  const FIXED = { sharp: 60, textPad: 1, dots: true, outlineColor: "" };
   function derive(t) {
     Object.assign(t, FIXED);
+    t.attract = 0.006 * t.pull;
+    t.repel = 0.13 * t.push;
+    t.gap = 2.1 * t.spacing;
+    t.pad = 3 * t.inner;
+    t.size = 1.05 * t.scale;
     t.goo = 8 + 22 * t.merge;
-    t.blend = 4 + 30 * t.merge;
+    t.blend = 0.5 + 40 * t.flow;
     t.threshold = 0.62 - 0.12 * t.merge;
     t.outline = t.line > 0;
     t.outlineW = t.line;
@@ -604,6 +616,7 @@ input.switch:checked::after { transform: translateX(16px); }
   const SPEC = [
     ["Farben"],
     ["palette", "Farbset", [["pastell", "Pastell"], ["kueste", "Küste"], ["mono", "Mono"]]],
+    ["flow", "Farbverlauf", 0, 1, 0.01],
     ["ink", "Schriftfarbe"],
     ["Schrift"],
     ["family", "Schrift", [["sans", "Manrope"], ["serif", "Playfair"], ["mono", "DM Mono"]]],
@@ -612,10 +625,16 @@ input.switch:checked::after { transform: translateX(16px); }
     ["grow", "Größer, je mehr darin liegt", 0, 2, 0.05],
     ["Form"],
     ["round", "Runde Bubbles"],
+    ["roundness", "Rundung der freien Form", 0, 1, 0.01],
     ["merge", "Verschmelzen", 0, 1, 0.01],
     ["line", "Kontur", 0, 8, 0.1],
     ["shade", "Plastisch (3D)", 0, 1, 0.05],
+    ["scale", "Größe leerer Bubbles", 0.6, 1.8, 0.05],
+    ["inner", "Rand innen", 0.3, 2.5, 0.05],
     ["Bewegung"],
+    ["spacing", "Abstand zwischen Bubbles", 0.3, 3, 0.05],
+    ["pull", "Anziehung zur Mitte", 0.2, 4, 0.05],
+    ["push", "Abstoßung", 0.2, 3, 0.05],
     ["glide", "Gleiten nach dem Loslassen", 0, 1, 0.01],
   ];
   const FAMILIES = { sans: "var(--text)", serif: "var(--display)", mono: "var(--mono)" };
@@ -1057,6 +1076,11 @@ input.switch:checked::after { transform: translateX(16px); }
         for (let i = 0; i <= n; i++) shape.push([cx - half + (2 * half * i) / n, ly, rl]);
         // A spine from the label down into the middle, so the skin stays one piece
         const my = (y0 + y1) / 2;
+        // Rundung: a round core under the content, from nothing up to almost the whole shape
+        if (T.roundness > 0.01) {
+          const reach = Math.max(x1 - cx, y1 - my, cx - x0, my - (ly - rl));
+          shape.push([cx, (my + ly) / 2 + (my - ly) * 0.25, reach * T.roundness]);
+        }
         for (let y = ly + rl; y < my; y += rl) shape.push([cx, y, rl * 0.8]);
         b._shape = shape;
         b._labTop = ly - L.h / 2;
@@ -1668,6 +1692,7 @@ input.switch:checked::after { transform: translateX(16px); }
     const sel = getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
+    hint("Schreiben · Enter: neuer Absatz · Esc, Strg/Cmd+Enter oder Klick daneben: fertig");
   }
 
   function onInput(b, lab) {
@@ -1684,9 +1709,13 @@ input.switch:checked::after { transform: translateX(16px); }
 
   function onLabelKey(e, lab) {
     e.stopPropagation();
-    if ((e.key === "Enter" && !e.shiftKey) || e.key === "Escape") {
+    // Enter starts a new paragraph; Esc or Strg/Cmd+Enter finishes
+    if (e.key === "Escape" || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
       e.preventDefault();
       lab.blur();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      document.execCommand("insertLineBreak");
     }
   }
 
@@ -1706,6 +1735,7 @@ input.switch:checked::after { transform: translateX(16px); }
     }
     b.text = b.text.trim();
     if (b._new && !b.text && !(kids.get(b.id) || []).length) remove(b);
+    hint(IDLE_HINT);
     needsSave = true;
     dirty = true;
     updateChrome();
@@ -1792,9 +1822,17 @@ input.switch:checked::after { transform: translateX(16px); }
     hint(parts.length ? "Loslassen: " + parts.join(" und ") : "Verschieben · berühren dockt an · in eine Bubble ziehen legt hinein", true);
   }
 
+  // A bubble that took its colour from the bubble it sat in keeps it when it moves
+  function keepColor(b) {
+    if (b.color) return;
+    const c = colorOf(b);
+    if (c) b.color = c;
+  }
+
   function dropOne(b) {
     const p = dropPlan(b);
     if (p.moved) {
+      keepColor(b);
       undockAll(b);
       b.parents = p.into ? [p.into.id] : [];
     } else {
@@ -2199,6 +2237,7 @@ input.switch:checked::after { transform: translateX(16px); }
         inp.addEventListener("change", () => {
           T[key] = inp.checked;
           applyTune(key);
+          syncPanel();
         });
         wrap.appendChild(inp);
       } else if (type === "string") {
@@ -2248,7 +2287,8 @@ input.switch:checked::after { transform: translateX(16px); }
   function show(key, v) {
     if (key === "line") return v < 0.05 ? "keine" : v.toFixed(1) + " px";
     if (key === "shade") return v < 0.01 ? "flach" : Math.round(v * 100) + " %";
-    if (key === "font") return Math.round(v * 100) + " %";
+    if (key === "font" || key === "scale" || key === "inner" || key === "spacing" || key === "pull" || key === "push") return Math.round(v * 100) + " %";
+    if (key === "roundness") return v < 0.01 ? "frei" : v > 0.99 ? "rund" : Math.round(v * 100) + " %";
     return Math.round((v / (key === "grow" ? 2 : 1)) * 100) + " %";
   }
   function syncPanel() {
@@ -2264,6 +2304,11 @@ input.switch:checked::after { transform: translateX(16px); }
       } else {
         inp.value = T[key];
         inp._val.textContent = show(key, T[key]);
+        if (key === "roundness") {
+          // Only matters when bubbles are not round
+          inp.disabled = !!T.round;
+          inp.parentElement.style.opacity = T.round ? "0.45" : "";
+        }
       }
     }
   }
@@ -2622,6 +2667,7 @@ input.switch:checked::after { transform: translateX(16px); }
       // Out of the bubble it was dragged from (or out of all), below its old place
       const from = bubbles.get(via) || bubbles.get(b.parents[0]);
       undockAll(b);
+      keepColor(b);
       b.parents = via ? b.parents.filter((id) => id !== via) : [];
       if (b.parents.length) {
         flash(`»${name(b)}« ist aus »${name(from)}« gelöst`);
@@ -2635,6 +2681,7 @@ input.switch:checked::after { transform: translateX(16px); }
       if (shift) {
         // Dock next to the target, on its level
         if (!sameLevel(b, target)) undockAll(b);
+        keepColor(b);
         b.parents = [...target.parents];
         topo();
         const ang = Math.random() * Math.PI * 2;
@@ -2644,6 +2691,7 @@ input.switch:checked::after { transform: translateX(16px); }
         flash(`»${name(b)}« ist an »${name(target)}« angedockt`);
       } else {
         undockAll(b);
+        keepColor(b);
         b.parents = [target.id];
         moveTree(b, target.x + (Math.random() - 0.5) * 20 - b.x, target.y + target.r * 0.25 - b.y);
         flash(`»${name(b)}« liegt jetzt in »${name(target)}«`);
