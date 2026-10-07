@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Notizen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
+<style>
+/* Layout: one endless canvas. Bubbles melt under an SVG goo filter (like the
+   website's grid); labels ride the same pan/zoom; HUD on top, tools below. */
+:root {
+  --bg: #ffffff;
+  --ink: rgba(44, 40, 36, 0.82);
+  --ink-dim: rgba(44, 40, 36, 0.48);
+  --mark: #000000;
+  --outline: #595959;
+  --d0: #ffffff;
+  --d1: #f7f6f3;
+  --d2: #efede9;
+  --d3: #e7e4df;
+  --dot: #e6e3de;
+  --panel: rgba(255, 255, 255, 0.92);
+  --line: rgba(0, 0, 0, 0.14);
+  --display: "Playfair Display", "Times New Roman", Times, serif;
+  --text: Helvetica, "Helvetica Neue", Arial, sans-serif;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
+    --mark: #f4f0ea; --outline: #8c8781; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
+    --dot: #2a2826; --panel: rgba(30, 29, 27, 0.92); --line: rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514; --ink: rgba(238, 233, 226, 0.86); --ink-dim: rgba(238, 233, 226, 0.5);
+  --mark: #f4f0ea; --outline: #8c8781; --d0: #161514; --d1: #1f1e1c; --d2: #292725; --d3: #33302d;
+  --dot: #2a2826; --panel: rgba(30, 29, 27, 0.92); --line: rgba(255, 255, 255, 0.16);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--text);
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+#canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px);
+}
+#canvas.is-dragging { cursor: grabbing; }
+
+#labels {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.label, #measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 0;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  hyphens: manual;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.label { outline: none; cursor: text; caret-color: var(--ink); }
+.label.editing { pointer-events: auto; }
+.label.is-empty::before { content: "Notiz"; color: var(--ink-dim); }
+.d0 { font-size: 21px; line-height: 1.15; letter-spacing: -0.01em; }
+.d1 { font-size: 15px; }
+.d2 { font-size: 13px; }
+.d3 { font-size: 12px; }
+#measure { visibility: hidden; pointer-events: none; overflow-wrap: normal; }
+
+#hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.9rem) 1.25rem 0;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  pointer-events: none;
+}
+#mark {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--mark);
+}
+#crumb {
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+#hint {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--ink-dim);
+  text-align: center;
+  text-wrap: balance;
+}
+#hint.is-live { color: var(--ink); }
+#tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+#tools button {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+#tools button:hover:not(:disabled) { border-color: var(--ink-dim); }
+#tools button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+#tools button:disabled { opacity: 0.35; cursor: default; }
+#tools .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+
+@media (max-width: 640px) {
+  #dock { left: 1rem; right: 1rem; transform: none; width: auto; max-width: none; }
+  #tools .sep { display: none; }
+  #tools button { padding: 7px 9px; font-size: 12px; }
+  #hint .long { display: none; }
+}
+</style>
+</head>
+<body>
+<svg id="canvas" aria-label="Bubble-Fläche">
+  <defs id="defs"></defs>
+  <g id="world">
+    <g id="layers"></g>
+    <g id="overlay"></g>
+  </g>
+</svg>
+<div id="labels"></div>
+<p id="measure" aria-hidden="true"></p>
+
+<header id="hud">
+  <h1 id="mark">Notizen</h1>
+  <p id="crumb"></p>
+</header>
+
+<div id="dock">
+  <p id="hint"></p>
+  <div id="tools" role="toolbar" aria-label="Werkzeuge">
+    <button type="button" id="btn-new">Neue Bubble</button>
+    <button type="button" id="btn-child" disabled>Unterbubble</button>
+    <button type="button" id="btn-multi" aria-pressed="false" title="Beim Loslassen zusätzlich zuordnen statt verschieben (wie Shift)">Auch zuordnen</button>
+    <button type="button" id="btn-del" disabled>Löschen</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button type="button" id="btn-undo" disabled>Rückgängig</button>
+    <button type="button" id="btn-fit">Übersicht</button>
+    <button type="button" id="btn-export">Export</button>
+    <button type="button" id="btn-import">Import</button>
+    <input type="file" id="import-file" accept="application/json,.json" hidden />
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const NS = "http://www.w3.org/2000/svg";
+  const STORE = "notizen-bubbles-v1";
+
+  const svg = document.getElementById("canvas");
+  const world = document.getElementById("world");
+  const defs = document.getElementById("defs");
+  const layersG = document.getElementById("layers");
+  const overlay = document.getElementById("overlay");
+  const labelsEl = document.getElementById("labels");
+  const measurer = document.getElementById("measure");
+  const hintEl = document.getElementById("hint");
+  const crumbEl = document.getElementById("crumb");
+  const btn = {
+    new: document.getElementById("btn-new"),
+    child: document.getElementById("btn-child"),
+    multi: document.getElementById("btn-multi"),
+    del: document.getElementById("btn-del"),
+    undo: document.getElementById("btn-undo"),
+    fit: document.getElementById("btn-fit"),
+    export: document.getElementById("btn-export"),
+    import: document.getElementById("btn-import"),
+  };
+  const importFile = document.getElementById("import-file");
+
+  // Per nesting depth (0 = main bubble): goo blur, smallest radius,
+  // label width when the bubble holds others, rim padding around children
+  const SIGMA = [9, 6, 5, 4];
+  const MIN_R = [64, 36, 28, 24];
+  const PARENT_W = [180, 120, 100, 90];
+  const PAD = [18, 12, 10, 9];
+  const LABEL_TOP = 16; // label distance from the rim in a bubble with children
+  const dd = (d) => Math.min(d, 3);
+
+  const IDLE_HINT =
+    'Doppelklick: neue Bubble · Klick: schreiben · Ziehen: in eine andere Bubble legen<span class="long"> · Shift beim Loslassen: zusätzlich zuordnen</span>';
+
+  let bubbles = new Map();
+  let view = { x: 0, y: 0, k: 1 };
+  let selected = null;
+  let editing = null;
+  let multiMode = false;
+  let drag = null;
+  let pan = null;
+  let pinch = null;
+  const pointers = new Map();
+  const undoStack = [];
+  let dirty = true;
+  let needsSave = false;
+  let flashTimer = 0;
+  let seq = 0;
+
+  // --- Structure ------------------------------------------------------------
+  let kids = new Map();
+  let depthOf = new Map();
+
+  // A bubble that belongs to X and to something inside X only needs the inner one
+  function normalize() {
+    for (const b of bubbles.values()) {
+      if (b.parents.length < 2) continue;
+      b.parents = b.parents.filter((pid) => {
+        const p = bubbles.get(pid);
+        return !b.parents.some((qid) => qid !== pid && bubbles.has(qid) && isAncestor(p, bubbles.get(qid)));
+      });
+    }
+  }
+
+  function topo() {
+    normalize();
+    kids = new Map();
+    depthOf = new Map();
+    for (const b of bubbles.values()) kids.set(b.id, []);
+    for (const b of bubbles.values()) for (const p of b.parents) kids.get(p)?.push(b);
+    const dep = (b, guard) => {
+      if (depthOf.has(b.id)) return depthOf.get(b.id);
+      let d = 0;
+      for (const p of b.parents) {
+        const pb = bubbles.get(p);
+        if (pb && guard < 64) d = Math.max(d, dep(pb, guard + 1) + 1);
+      }
+      depthOf.set(b.id, d);
+      return d;
+    };
+    for (const b of bubbles.values()) dep(b, 0);
+  }
+
+  // a is an ancestor of b
+  function isAncestor(a, b) {
+    const stack = [...b.parents];
+    const seen = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === a.id) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const p = bubbles.get(id);
+      if (p) stack.push(...p.parents);
+    }
+    return false;
+  }
+
+  function subtree(b) {
+    const out = new Set([b]);
+    const stack = [b];
+    while (stack.length) {
+      const x = stack.pop();
+      for (const c of kids.get(x.id) || []) {
+        if (!out.has(c)) {
+          out.add(c);
+          stack.push(c);
+        }
+      }
+    }
+    return out;
+  }
+
+  // A bubble and everything that belongs only to it
+  function ownTree(b, out = new Set()) {
+    if (out.has(b)) return out;
+    out.add(b);
+    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) ownTree(c, out);
+    return out;
+  }
+
+  // Move a bubble with everything that belongs only to it
+  function moveTree(b, dx, dy, seen = new Set()) {
+    if (seen.has(b)) return;
+    seen.add(b);
+    b.x += dx;
+    b.y += dy;
+    for (const c of kids.get(b.id) || []) if (c.parents.length === 1) moveTree(c, dx, dy, seen);
+  }
+
+  function uid() {
+    return "b" + Date.now().toString(36) + (seq++).toString(36);
+  }
+
+  function make(text, x, y, parents = []) {
+    const b = { id: uid(), text, x, y, parents: [...parents], r: 0 };
+    bubbles.set(b.id, b);
+    topo();
+    b.r = MIN_R[dd(depthOf.get(b.id))];
+    return b;
+  }
+
+  function remove(b) {
+    for (const c of kids.get(b.id) || []) {
+      c.parents = c.parents.filter((p) => p !== b.id);
+      if (!c.parents.length) c.parents = [...b.parents];
+    }
+    bubbles.delete(b.id);
+    if (selected === b) selected = null;
+    if (editing === b) editing = null;
+    topo();
+    needsSave = true;
+    dirty = true;
+  }
+
+  function name(b) {
+    const t = (b.text || "").split("\n")[0].trim();
+    if (!t) return "Notiz";
+    return t.length > 26 ? t.slice(0, 25) + "…" : t;
+  }
+
+  // --- Text measuring ---------------------------------------------------------
+  const mcache = new Map();
+  function measure(text, d, w) {
+    const key = d + "|" + w + "|" + text;
+    let m = mcache.get(key);
+    if (m === undefined) {
+      measurer.className = "d" + d;
+      measurer.style.width = w + "px";
+      measurer.textContent = text || "Notiz";
+      m = { h: measurer.offsetHeight, fits: measurer.scrollWidth <= w + 1 };
+      mcache.set(key, m);
+    }
+    return m;
+  }
+  // Smallest circle that holds the text of a bubble without children
+  function leafSize(text, d) {
+    d = dd(d);
+    const key = "L" + d + "|" + text;
+    let s = mcache.get(key);
+    if (!s) {
+      // Try wide-and-short and narrow-and-tall text boxes for each radius
+      let r = MIN_R[d];
+      let w = Math.round(r * 1.36);
+      search: for (; r < 480; r += 3) {
+        for (const f of [1.36, 1.55, 1.75, 1.2]) {
+          const tw = Math.round(r * f);
+          const m = measure(text, d, tw);
+          if (m.fits && Math.hypot(tw / 2, m.h / 2) <= r - 6) {
+            w = tw;
+            break search;
+          }
+        }
+      }
+      if (r >= 480) w = Math.round(r * 1.36);
+      s = { r, w: w + 2, h: measure(text, d, w).h };
+      mcache.set(key, s);
+    }
+    return s;
+  }
+  function parentLabel(text, d) {
+    d = dd(d);
+    const w = PARENT_W[d];
+    return { w, h: measure(text, d, w).h };
+  }
+
+  // --- Physics: pack children, keep main bubbles apart, pull connected ones together
+  function step() {
+    let energy = 0;
+    const moving = drag && drag.moved ? drag.b : null;
+    const pinned = moving ? ownTree(moving) : null;
+    const isPinned = (b) => pinned !== null && pinned.has(b);
+    const push = (b, dx, dy) => {
+      if (isPinned(b) || !isFinite(dx) || !isFinite(dy)) return;
+      moveTree(b, dx, dy);
+    };
+    const all = [...bubbles.values()];
+    for (const b of all) {
+      b._px = b.x;
+      b._py = b.y;
+    }
+
+    for (const b of all) {
+      const d = depthOf.get(b.id);
+      b._own = (kids.get(b.id) || []).filter((c) => c.parents.length === 1 && c !== moving);
+      if (b._own.length) {
+        b._label = parentLabel(b.text, d);
+        b._off = (LABEL_TOP + b._label.h + 8 - PAD[dd(d)]) / 2;
+      } else {
+        b._label = leafSize(b.text, d);
+      }
+    }
+
+    const repel = (list, gap) => {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i];
+          const c = list[j];
+          if (isPinned(a) || isPinned(c)) continue;
+          if (a._linked && a._linked.has(c)) continue;
+          let dx = c.x - a.x;
+          let dy = c.y - a.y;
+          let dist = Math.hypot(dx, dy);
+          const min = a.r + c.r + gap;
+          if (dist >= min) continue;
+          if (dist < 0.01) {
+            dx = Math.random() - 0.5;
+            dy = Math.random() - 0.5;
+            dist = Math.hypot(dx, dy);
+          }
+          const f = ((min - dist) / dist) * 0.45;
+          push(a, -dx * f, -dy * f);
+          push(c, dx * f, dy * f);
+        }
+      }
+    };
+
+    // Shared bubbles: group by the set of bubbles they belong to
+    const groups = new Map();
+    for (const b of all) b._linked = null;
+    for (const c of all) {
+      if (c.parents.length < 2) continue;
+      const key = [...c.parents].sort().join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    for (const list of groups.values()) {
+      const ps = list[0].parents.map((id) => bubbles.get(id)).filter(Boolean);
+      if (ps.length < 2) continue;
+      const maxR = Math.max(...list.map((c) => c.r));
+      // Pull the owning bubbles together until they almost touch at the shared one
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          const a = ps[i];
+          const c = ps[j];
+          if (isAncestor(a, c) || isAncestor(c, a)) continue;
+          (a._linked ||= new Set()).add(c);
+          (c._linked ||= new Set()).add(a);
+          const dx = c.x - a.x;
+          const dy = c.y - a.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const want = a.r + c.r + maxR * 0.9;
+          let f = (dist - want) * 0.03;
+          f = Math.max(-6, Math.min(6, f));
+          push(a, (dx / dist) * f, (dy / dist) * f);
+          push(c, (-dx / dist) * f, (-dy / dist) * f);
+        }
+      }
+      // Meeting point: between the rims, facing each other
+      let mx = 0;
+      let my = 0;
+      for (const p of ps) {
+        let ox = 0;
+        let oy = 0;
+        for (const q of ps) if (q !== p) { ox += q.x; oy += q.y; }
+        ox /= ps.length - 1;
+        oy /= ps.length - 1;
+        const dist = Math.hypot(ox - p.x, oy - p.y) || 1;
+        mx += p.x + ((ox - p.x) / dist) * p.r;
+        my += p.y + ((oy - p.y) / dist) * p.r;
+      }
+      mx /= ps.length;
+      my /= ps.length;
+      const ax = ps[1].x - ps[0].x;
+      const ay = ps[1].y - ps[0].y;
+      const al = Math.hypot(ax, ay) || 1;
+      const px = -ay / al;
+      const py = ax / al;
+      const n = list.length;
+      const spread = list.reduce((s, c) => s + 2 * c.r + 12, 0);
+      let along = -spread / 2;
+      list.forEach((c) => {
+        const o = along + c.r + 6;
+        along += 2 * c.r + 12;
+        const tx = mx + px * (n > 1 ? o : 0);
+        const ty = my + py * (n > 1 ? o : 0);
+        push(c, (tx - c.x) * 0.2, (ty - c.y) * 0.2);
+      });
+    }
+
+    // Children gather below the label of their bubble and keep a little air
+    for (const b of all) {
+      if (!b._own.length) continue;
+      const d = depthOf.get(b.id);
+      const tx = b.x;
+      const ty = b.y + b._off;
+      for (const c of b._own) push(c, (tx - c.x) * 0.025, (ty - c.y) * 0.025);
+      repel(b._own, SIGMA[dd(d + 1)] * 3);
+    }
+    repel(all.filter((b) => !b.parents.length), SIGMA[0] * 3.4);
+
+    // Radii, innermost first: a bubble wraps its own children and its label
+    const order = all.slice().sort((a, b) => depthOf.get(b.id) - depthOf.get(a.id));
+    for (const b of order) {
+      const d = dd(depthOf.get(b.id));
+      let target;
+      if (b._own.length) {
+        const L = b._label;
+        const h = LABEL_TOP + L.h;
+        target = Math.max(MIN_R[d] * 1.2, (L.w * L.w) / 4 / (2 * h) + h / 2);
+        for (const c of b._own) target = Math.max(target, Math.hypot(c.x - b.x, c.y - b.y) + c.r + PAD[d]);
+      } else {
+        target = b._label.r;
+      }
+      const dr = (target - b.r) * 0.3;
+      b.r += dr;
+      energy += Math.abs(dr);
+    }
+    // Net movement only: pushes that cancel out leave the picture still
+    for (const b of all) energy += Math.abs(b.x - b._px) + Math.abs(b.y - b._py);
+    return energy;
+  }
+
+  // --- Rendering ---------------------------------------------------------------
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  // Goo with a hairline along the melted contour (same recipe as the website grid)
+  function buildFilters() {
+    defs.textContent = "";
+    const hex = getComputedStyle(document.documentElement).getPropertyValue("--outline").trim() || "#595959";
+    const n = parseInt(hex.replace("#", ""), 16) || 0x595959;
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => (v / 255).toFixed(3));
+    SIGMA.forEach((sigma, i) => {
+      const f = el("filter", { id: "goo" + i, x: "-30%", y: "-30%", width: "160%", height: "160%", "color-interpolation-filters": "sRGB" }, defs);
+      el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: sigma, result: "blur" }, f);
+      el("feColorMatrix", { in: "blur", type: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -9", result: "goo" }, f);
+      const edge = 0.396 + 0.9 / (sigma * 2.5066);
+      el("feColorMatrix", { in: "blur", type: "matrix", values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 40 ${(-(40 * edge - 0.5)).toFixed(3)}`, result: "inner" }, f);
+      el("feColorMatrix", { in: "goo", type: "matrix", values: `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  0 0 0 1 0`, result: "tint" }, f);
+      el("feComposite", { in: "tint", in2: "inner", operator: "out", result: "line" }, f);
+      const m = el("feMerge", {}, f);
+      el("feMergeNode", { in: "goo" }, m);
+      el("feMergeNode", { in: "line" }, m);
+    });
+  }
+
+  const layers = [];
+  function layer(d) {
+    while (layers.length <= d) {
+      const i = layers.length;
+      const g = el("g", { filter: `url(#goo${dd(i)})` }, layersG);
+      layers.push({ g, bridges: el("g", {}, g), bodies: el("g", {}, g) });
+    }
+    return layers[d];
+  }
+  const circles = new Map();
+  const labels = new Map();
+  const selRing = el("circle", { fill: "none", stroke: "var(--ink)", "stroke-opacity": "0.55" }, overlay);
+  const dropRing = el("circle", { fill: "var(--ink)", "fill-opacity": "0.04", stroke: "var(--ink)", "stroke-dasharray": "4 5" }, overlay);
+
+  function render() {
+    world.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.k.toFixed(4)})`);
+    labelsEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+    const gs = 24 * view.k;
+    svg.style.backgroundSize = `${gs}px ${gs}px`;
+    svg.style.backgroundPosition = `${view.x}px ${view.y}px`;
+
+    for (const L of layers) L.bridges.textContent = "";
+    for (const [id, c] of circles) if (!bubbles.has(id)) { c.remove(); circles.delete(id); }
+    for (const [id, l] of labels) if (!bubbles.has(id)) { l.remove(); labels.delete(id); }
+
+    for (const b of bubbles.values()) {
+      const d = depthOf.get(b.id);
+      let c = circles.get(b.id);
+      if (!c) {
+        c = el("circle", {});
+        circles.set(b.id, c);
+      }
+      const L = layer(d);
+      if (c.parentNode !== L.bodies) L.bodies.appendChild(c);
+      c.setAttribute("cx", b.x.toFixed(1));
+      c.setAttribute("cy", b.y.toFixed(1));
+      c.setAttribute("r", Math.max(1, b.r).toFixed(1));
+      c.style.fill = `var(--d${dd(d)})`;
+
+      // A shared bubble pulls the skin of every bubble it belongs to
+      // around itself, so those bubbles melt into one another right there
+      if (b.parents.length > 1) {
+        for (const pid of b.parents) {
+          const p = bubbles.get(pid);
+          if (!p) continue;
+          const pd = depthOf.get(pid);
+          const PL = layer(pd);
+          const fill = `var(--d${dd(pd)})`;
+          const skin = SIGMA[dd(pd)] * 1.6;
+          el("circle", { cx: b.x.toFixed(1), cy: b.y.toFixed(1), r: (b.r + skin).toFixed(1), style: `fill:${fill}` }, PL.bridges);
+          const dx = b.x - p.x;
+          const dy = b.y - p.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const from = Math.max(0, p.r - b.r);
+          const len = dist - from;
+          const stepLen = Math.max(6, b.r * 0.5);
+          const rr = b.r * 0.75 + skin * 0.5;
+          for (let s = 0; s < len; s += stepLen) {
+            const t = (from + s) / dist;
+            el("circle", { cx: (p.x + dx * t).toFixed(1), cy: (p.y + dy * t).toFixed(1), r: rr.toFixed(1), style: `fill:${fill}` }, PL.bridges);
+          }
+        }
+      }
+
+      let lab = labels.get(b.id);
+      if (!lab) {
+        lab = document.createElement("div");
+        lab.className = "label";
+        lab.spellcheck = false;
+        lab.addEventListener("input", () => onInput(b, lab));
+        lab.addEventListener("keydown", (e) => onLabelKey(e, lab));
+        lab.addEventListener("blur", () => finishEdit(b));
+        lab.addEventListener("paste", onPaste);
+        labelsEl.appendChild(lab);
+        labels.set(b.id, lab);
+      }
+      const isEditing = editing === b;
+      if (!isEditing && lab.textContent !== b.text) lab.textContent = b.text;
+      lab.className = `label d${dd(d)}${b.text ? "" : " is-empty"}${isEditing ? " editing" : ""}`;
+      const S = b._label || leafSize(b.text, d);
+      let left;
+      let top;
+      if (b._own && b._own.length) {
+        left = b.x - S.w / 2;
+        top = b.y - b.r + LABEL_TOP;
+      } else {
+        left = b.x - S.w / 2;
+        top = b.y - S.h / 2;
+      }
+      lab.style.width = S.w + "px";
+      lab.style.zIndex = String(d + 1);
+      lab.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
+    }
+
+    const sw = 1.2 / view.k;
+    if (selected && bubbles.has(selected.id)) {
+      selRing.setAttribute("cx", selected.x);
+      selRing.setAttribute("cy", selected.y);
+      selRing.setAttribute("r", selected.r + 7);
+      selRing.setAttribute("stroke-width", sw);
+      selRing.style.display = "";
+    } else {
+      selRing.style.display = "none";
+    }
+    const t = drag && drag.moved ? drag.target : null;
+    if (t) {
+      dropRing.setAttribute("cx", t.x);
+      dropRing.setAttribute("cy", t.y);
+      dropRing.setAttribute("r", t.r + 10);
+      dropRing.setAttribute("stroke-width", sw);
+      dropRing.style.display = "";
+    } else {
+      dropRing.style.display = "none";
+    }
+  }
+
+  function updateChrome() {
+    btn.child.disabled = !selected;
+    btn.del.disabled = !selected;
+    btn.undo.disabled = !undoStack.length;
+    btn.multi.setAttribute("aria-pressed", String(multiMode));
+    if (selected && bubbles.has(selected.id)) {
+      const path = [];
+      let b = selected;
+      const seen = new Set();
+      while (b && !seen.has(b)) {
+        seen.add(b);
+        path.unshift(name(b));
+        b = bubbles.get(b.parents[0]);
+      }
+      const extra = selected.parents.length > 1 ? `  (gehört zu ${selected.parents.length} Bubbles)` : "";
+      crumbEl.textContent = path.join(" › ") + extra;
+    } else {
+      crumbEl.textContent = "";
+    }
+  }
+
+  function hint(html, live = false) {
+    hintEl.innerHTML = html;
+    hintEl.classList.toggle("is-live", live);
+  }
+  function flash(text) {
+    clearTimeout(flashTimer);
+    hintEl.textContent = text;
+    hintEl.classList.add("is-live");
+    flashTimer = setTimeout(() => hint(IDLE_HINT), 3200);
+  }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // --- Saving, loading, undo ------------------------------------------------------
+  function serialize() {
+    return {
+      v: 1,
+      bubbles: [...bubbles.values()].map((b) => ({ id: b.id, text: b.text, x: Math.round(b.x), y: Math.round(b.y), parents: b.parents })),
+    };
+  }
+  function save() {
+    needsSave = false;
+    try {
+      localStorage.setItem(STORE, JSON.stringify(serialize()));
+    } catch (e) {
+      /* storage unavailable: the canvas keeps working */
+    }
+  }
+  function snapshot() {
+    undoStack.push(JSON.stringify(serialize().bubbles));
+    if (undoStack.length > 80) undoStack.shift();
+    updateChrome();
+  }
+  function load(list, keep) {
+    const old = bubbles;
+    bubbles = new Map();
+    for (const o of list || []) {
+      if (!o || o.id == null) continue;
+      const id = String(o.id);
+      bubbles.set(id, {
+        id,
+        text: String(o.text || ""),
+        x: Number(o.x) || 0,
+        y: Number(o.y) || 0,
+        parents: Array.isArray(o.parents) ? [...new Set(o.parents.map(String))] : [],
+        r: keep && old.get(id) ? old.get(id).r : 0,
+      });
+    }
+    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => p !== b.id && bubbles.has(p));
+    // Break any cycle a hand-edited file might carry
+    for (const b of bubbles.values()) b.parents = b.parents.filter((p) => !isAncestor(b, bubbles.get(p)) );
+    selected = selected && bubbles.get(selected.id);
+    editing = null;
+    topo();
+    for (const b of bubbles.values()) if (!b.r) b.r = MIN_R[dd(depthOf.get(b.id))];
+    dirty = true;
+  }
+  function settle(n = 400) {
+    for (let i = 0; i < n; i++) if (step() < 0.01 && i > 30) break;
+  }
+  function undo() {
+    const s = undoStack.pop();
+    if (!s) return;
+    if (editing) labels.get(editing.id)?.blur();
+    load(JSON.parse(s), true);
+    needsSave = true;
+    updateChrome();
+  }
+
+  function sample() {
+    const a = make("Messestand Frankfurt", -260, 0);
+    const b = make("Showroom Offenbach", 260, 0);
+    make("Empfangstresen", a.x - 40, a.y + 10, [a.id]);
+    make("Lounge mit Sitzinseln", a.x + 40, a.y + 50, [a.id]);
+    const m = make("Materialien", a.x - 10, a.y + 100, [a.id]);
+    make("Eiche geölt", m.x - 10, m.y, [m.id]);
+    make("Filz", m.x + 10, m.y + 10, [m.id]);
+    make("Schaufenster", b.x - 20, b.y + 30, [b.id]);
+    make("Lichtplanung", b.x + 30, b.y + 70, [b.id]);
+    make("Markenfarben", 0, 40, [a.id, b.id]);
+  }
+
+  function fit() {
+    const W = innerWidth;
+    const H = innerHeight;
+    const top = 64;
+    const bottom = 140;
+    if (!bubbles.size) {
+      view = { x: W / 2, y: top + (H - top - bottom) / 2, k: 1 };
+      dirty = true;
+      return;
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const b of bubbles.values()) {
+      x0 = Math.min(x0, b.x - b.r);
+      y0 = Math.min(y0, b.y - b.r);
+      x1 = Math.max(x1, b.x + b.r);
+      y1 = Math.max(y1, b.y + b.r);
+    }
+    const k = Math.max(0.2, Math.min(1.1, (W - 40) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+    view = { k, x: W / 2 - ((x0 + x1) / 2) * k, y: top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * k };
+    dirty = true;
+  }
+
+  // --- Editing ------------------------------------------------------------------
+  const PLAIN = (() => {
+    const d = document.createElement("div");
+    try {
+      d.contentEditable = "plaintext-only";
+      return d.contentEditable === "plaintext-only";
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  function select(b) {
+    selected = b;
+    dirty = true;
+    updateChrome();
+  }
+
+  function startEdit(b, isNew = false) {
+    if (editing && editing !== b) labels.get(editing.id)?.blur();
+    select(b);
+    editing = b;
+    b._new = isNew;
+    b._snap = isNew;
+    step();
+    render();
+    const lab = labels.get(b.id);
+    lab.contentEditable = PLAIN ? "plaintext-only" : "true";
+    lab.classList.add("editing");
+    lab.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.selectNodeContents(lab);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function onInput(b, lab) {
+    if (!b._snap) {
+      snapshot();
+      b._snap = true;
+    }
+    b.text = lab.innerText.replace(/\n+$/, "");
+    lab.classList.toggle("is-empty", !b.text);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+
+  function onLabelKey(e, lab) {
+    e.stopPropagation();
+    if ((e.key === "Enter" && !e.shiftKey) || e.key === "Escape") {
+      e.preventDefault();
+      lab.blur();
+    }
+  }
+
+  function onPaste(e) {
+    e.preventDefault();
+    const text = (e.clipboardData && e.clipboardData.getData("text/plain")) || "";
+    document.execCommand("insertText", false, text);
+  }
+
+  function finishEdit(b) {
+    if (editing !== b) return;
+    editing = null;
+    const lab = labels.get(b.id);
+    if (lab) {
+      lab.contentEditable = "false";
+      lab.classList.remove("editing");
+    }
+    b.text = b.text.trim();
+    if (b._new && !b.text && !(kids.get(b.id) || []).length) remove(b);
+    needsSave = true;
+    dirty = true;
+    updateChrome();
+  }
+
+  // --- Pointer ------------------------------------------------------------------
+  function local(e) {
+    const r = svg.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function toWorld(e) {
+    const p = local(e);
+    return { x: (p.x - view.x) / view.k, y: (p.y - view.y) / view.k };
+  }
+  function hitTest(p, exclude) {
+    let best = null;
+    let bestD = -1;
+    for (const b of bubbles.values()) {
+      if (exclude && exclude.has(b)) continue;
+      if (Math.hypot(p.x - b.x, p.y - b.y) > b.r) continue;
+      const d = depthOf.get(b.id);
+      if (!best || d > bestD || (d === bestD && b.r < best.r)) {
+        best = b;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  // What a drop would do: "move", "add" (shared) or "free" (becomes a main bubble)
+  function dropAction(b, t, multi) {
+    if (!t) {
+      if (b.parents.length > 1 && Math.hypot(b.x - drag.bx, b.y - drag.by) < b.r * 2) return "keep";
+      return multi && b.parents.length ? "keep" : b.parents.length ? "free" : "keep";
+    }
+    if (multi && b.parents.length && !b.parents.includes(t.id)) {
+      const clash = b.parents.some((pid) => {
+        const p = bubbles.get(pid);
+        return !p || isAncestor(p, t) || isAncestor(t, p);
+      });
+      if (!clash) return "add";
+    }
+    if (b.parents.length === 1 && b.parents[0] === t.id) return "keep";
+    return "move";
+  }
+
+  function dragHint() {
+    const a = dropAction(drag.b, drag.target, drag.multi);
+    const bn = esc(name(drag.b));
+    const tn = drag.target ? esc(name(drag.target)) : "";
+    if (a === "add") hint(`Loslassen: »${bn}« gehört zusätzlich zu »${tn}«`, true);
+    else if (a === "move") hint(`Loslassen: in »${tn}« legen<span class="long"> · mit Shift zusätzlich zuordnen</span>`, true);
+    else if (a === "free") hint(`Loslassen: »${bn}« wird eine eigene Bubble`, true);
+    else hint(drag.multi ? "Über eine andere Bubble ziehen, um sie zusätzlich zuzuordnen" : "Verschieben", true);
+  }
+
+  function drop() {
+    const b = drag.b;
+    const t = drag.target;
+    const a = dropAction(b, t, drag.multi);
+    if (a === "add") {
+      b.parents.push(t.id);
+      flash(`»${name(b)}« verbindet jetzt »${b.parents.map((p) => name(bubbles.get(p))).join("« und »")}«`);
+    } else if (a === "move") {
+      b.parents = [t.id];
+    } else if (a === "free") {
+      b.parents = [];
+    }
+    topo();
+    needsSave = true;
+    dirty = true;
+  }
+
+  function pinchState() {
+    const [a, b] = [...pointers.values()];
+    return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+  }
+
+  svg.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    pointers.set(e.pointerId, local(e));
+    if (pointers.size === 2) {
+      if (drag && drag.moved) return;
+      drag = null;
+      pan = null;
+      const s = pinchState();
+      pinch = { ...s, vx: view.x, vy: view.y, k: view.k };
+      return;
+    }
+    if (pointers.size > 2) return;
+    const w = toWorld(e);
+    const hit = hitTest(w);
+    if (hit) drag = { b: hit, id: e.pointerId, sx: e.clientX, sy: e.clientY, last: w, moved: false, target: null, multi: false };
+    else pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
+  });
+
+  svg.addEventListener("pointermove", (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
+    if (pinch && pointers.size >= 2) {
+      const s = pinchState();
+      const k = Math.max(0.2, Math.min(3, (pinch.k * s.d) / pinch.d));
+      const wx = (pinch.cx - pinch.vx) / pinch.k;
+      const wy = (pinch.cy - pinch.vy) / pinch.k;
+      view = { k, x: s.cx - wx * k, y: s.cy - wy * k };
+      dirty = true;
+      return;
+    }
+    if (drag && e.pointerId === drag.id) {
+      if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) {
+        drag.moved = true;
+        drag.bx = drag.b.x;
+        drag.by = drag.b.y;
+        snapshot();
+        if (editing) labels.get(editing.id)?.blur();
+        select(drag.b);
+        svg.classList.add("is-dragging");
+      }
+      if (drag.moved) {
+        const w = toWorld(e);
+        moveTree(drag.b, w.x - drag.last.x, w.y - drag.last.y);
+        drag.last = w;
+        drag.target = hitTest(w, subtree(drag.b));
+        drag.multi = e.shiftKey || multiMode;
+        dragHint();
+        dirty = true;
+      }
+    } else if (pan && e.pointerId === pan.id) {
+      const dx = e.clientX - pan.sx;
+      const dy = e.clientY - pan.sy;
+      if (!pan.moved && Math.hypot(dx, dy) > 3) pan.moved = true;
+      if (pan.moved) {
+        view.x = pan.vx + dx;
+        view.y = pan.vy + dy;
+        dirty = true;
+      }
+    }
+  });
+
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (pinch) {
+      if (pointers.size < 2) pinch = null;
+      return;
+    }
+    if (drag && e.pointerId === drag.id) {
+      if (drag.moved) {
+        drag.multi = e.shiftKey || multiMode;
+        if (e.type !== "pointercancel") drop();
+        svg.classList.remove("is-dragging");
+        hint(IDLE_HINT);
+      } else if (e.type === "pointerup") {
+        startEdit(drag.b);
+      }
+      drag = null;
+      dirty = true;
+      updateChrome();
+    } else if (pan && e.pointerId === pan.id) {
+      if (!pan.moved && e.type === "pointerup") select(null);
+      pan = null;
+    }
+  }
+  svg.addEventListener("pointerup", endPointer);
+  svg.addEventListener("pointercancel", endPointer);
+
+  svg.addEventListener("dblclick", (e) => {
+    const w = toWorld(e);
+    const hit = hitTest(w);
+    snapshot();
+    const b = make("", w.x, w.y, hit ? [hit.id] : []);
+    startEdit(b, true);
+    needsSave = true;
+  });
+
+  svg.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const p = local(e);
+      const zoom = e.ctrlKey || e.metaKey || e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40);
+      if (zoom) {
+        const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015) * (e.deltaMode === 1 ? 30 : 1));
+        const k = Math.max(0.2, Math.min(3, view.k * f));
+        view.x = p.x - ((p.x - view.x) * k) / view.k;
+        view.y = p.y - ((p.y - view.y) * k) / view.k;
+        view.k = k;
+      } else {
+        view.x -= e.deltaX;
+        view.y -= e.deltaY;
+      }
+      dirty = true;
+    },
+    { passive: false }
+  );
+
+  window.addEventListener("keydown", (e) => {
+    if (editing || e.target instanceof HTMLInputElement) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      undo();
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+      e.preventDefault();
+      snapshot();
+      remove(selected);
+      updateChrome();
+    } else if (e.key === "Enter" && selected) {
+      e.preventDefault();
+      startEdit(selected);
+    } else if (e.key === "Escape") {
+      select(null);
+    }
+    if (e.key === "Shift" && drag && drag.moved) {
+      drag.multi = true;
+      dragHint();
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "Shift" && drag && drag.moved) {
+      drag.multi = multiMode;
+      dragHint();
+    }
+  });
+
+  // --- Tools ----------------------------------------------------------------------
+  // Keep the text being edited when a tool button is pressed
+  document.getElementById("tools").addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button") && editing) e.preventDefault();
+  });
+
+  btn.new.addEventListener("click", () => {
+    if (editing) labels.get(editing.id)?.blur();
+    snapshot();
+    const W = innerWidth;
+    const H = innerHeight;
+    const cx = (W / 2 - view.x) / view.k + (Math.random() - 0.5) * 40;
+    const cy = (H / 2 - view.y) / view.k + (Math.random() - 0.5) * 40;
+    startEdit(make("", cx, cy), true);
+  });
+  btn.child.addEventListener("click", () => {
+    if (!selected) return;
+    const p = selected;
+    if (editing) labels.get(editing.id)?.blur();
+    if (!bubbles.has(p.id)) return;
+    snapshot();
+    startEdit(make("", p.x + (Math.random() - 0.5) * 20, p.y + p.r * 0.3, [p.id]), true);
+  });
+  btn.multi.addEventListener("click", () => {
+    multiMode = !multiMode;
+    updateChrome();
+    if (multiMode) flash("Auch zuordnen ist an: eine Bubble auf eine andere ziehen, um sie beiden zuzuordnen.");
+    else hint(IDLE_HINT);
+  });
+  btn.del.addEventListener("click", () => {
+    if (!selected) return;
+    const b = selected;
+    if (editing) labels.get(editing.id)?.blur();
+    if (!bubbles.has(b.id)) return;
+    snapshot();
+    remove(b);
+    updateChrome();
+  });
+  btn.undo.addEventListener("click", undo);
+  btn.fit.addEventListener("click", fit);
+  btn.export.addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "notizen.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  btn.import.addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", async () => {
+    const f = importFile.files && importFile.files[0];
+    importFile.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      snapshot();
+      load(Array.isArray(data) ? data : data.bubbles, false);
+      settle();
+      fit();
+      needsSave = true;
+      flash(`»${f.name}« geladen`);
+    } catch (err) {
+      flash("Diese Datei ließ sich nicht lesen. Erwartet wird ein Export aus diesem Tool (.json).");
+    }
+    updateChrome();
+  });
+
+  // --- Theme ----------------------------------------------------------------------
+  buildFilters();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", buildFilters);
+  new MutationObserver(buildFilters).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  addEventListener("resize", () => { dirty = true; });
+
+  // --- Start ----------------------------------------------------------------------
+  let stored = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(STORE) || "null");
+  } catch (e) {
+    stored = null;
+  }
+  if (stored && Array.isArray(stored.bubbles)) {
+    load(stored.bubbles, false);
+    hint(IDLE_HINT);
+  } else {
+    sample();
+    hintEl.textContent = "Beispiel zum Ausprobieren: alles lässt sich umschreiben, verschieben oder löschen.";
+    setTimeout(() => hint(IDLE_HINT), 6000);
+  }
+  settle();
+  fit();
+  updateChrome();
+
+  function frame() {
+    const energy = step();
+    if (energy > 0.5) needsSave = true;
+    if (energy > 0.15 || dirty) {
+      render();
+      dirty = false;
+    }
+    requestAnimationFrame(frame);
+  }
+  setInterval(() => {
+    if (needsSave && !drag) save();
+  }, 1000);
+  addEventListener("pagehide", () => { if (needsSave) save(); });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
